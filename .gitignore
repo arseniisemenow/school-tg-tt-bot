@@ -1,1 +1,42 @@
-.idea
+# Build directories
+cmake-build-*/
+build/
+*.o
+*.a
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Conan
+conanbuildinfo.cmake
+conan.lock
+conan_imports_manifest.txt
+
+# Environment
+.env
+.env.local
+
+# Config (if contains secrets)
+config/config.local.json
+
+# Database
+*.db
+*.sqlite
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+.cursor/
+CMakeUserPresets.json
+PROJECT_STRUCTURE.md
