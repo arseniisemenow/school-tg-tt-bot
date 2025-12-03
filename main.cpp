@@ -11,6 +11,10 @@
 #include "database/connection_pool.h"
 #include "bot/bot.h"
 #include "observability/logger.h"
+#include "repositories/group_repository.h"
+#include "repositories/player_repository.h"
+#include "repositories/match_repository.h"
+#include "school21/api_client.h"
 
 std::string getEnvVar(const std::string& name, 
                      const std::string& default_value = "") {
@@ -95,14 +99,17 @@ int main(int argc, char* argv[]) {
     db_config.idle_timeout_seconds = config.getInt("database.connection_pool.idle_timeout_seconds", 300);
     db_config.max_lifetime_seconds = config.getInt("database.connection_pool.max_lifetime_seconds", 3600);
     
-    auto db_pool = database::ConnectionPool::create(db_config);
+    auto db_pool_unique = database::ConnectionPool::create(db_config);
     logger->info("Database connection pool initialized");
     
     // Health check
-    if (!db_pool->healthCheck()) {
+    if (!db_pool_unique->healthCheck()) {
       logger->error("Database health check failed");
       return 1;
     }
+    
+    // Convert to shared_ptr for bot
+    std::shared_ptr<database::ConnectionPool> db_pool_shared(std::move(db_pool_unique));
     
     // Get Telegram bot token
     std::string bot_token = getEnvVar("TELEGRAM_BOT_TOKEN");
@@ -110,9 +117,36 @@ int main(int argc, char* argv[]) {
       throw std::runtime_error("TELEGRAM_BOT_TOKEN not set");
     }
     
+    // Create repositories
+    auto group_repo = std::make_unique<repositories::GroupRepository>(db_pool_shared);
+    auto player_repo = std::make_unique<repositories::PlayerRepository>(db_pool_shared);
+    auto match_repo = std::make_unique<repositories::MatchRepository>(db_pool_shared);
+    
+    // Create School21 API client if configured
+    std::unique_ptr<school21::ApiClient> school21_client = nullptr;
+    std::string school21_username = getEnvVar("SCHOOL21_API_USERNAME");
+    std::string school21_password = getEnvVar("SCHOOL21_API_PASSWORD");
+    if (!school21_username.empty() && !school21_password.empty()) {
+      school21::ApiClient::Config school21_config;
+      school21_config.base_url = config.getString("school21.api_base_url", 
+                                                   "https://platform.21-school.ru/services/21-school/api/v1");
+      school21_config.username = school21_username;
+      school21_config.password = school21_password;
+      school21_config.client_id = config.getString("school21.client_id", "s21-open-api");
+      school21_config.timeout_seconds = config.getInt("school21.timeout_seconds", 10);
+      school21_config.max_retries = config.getInt("school21.max_retries", 3);
+      school21_client = std::make_unique<school21::ApiClient>(school21_config);
+      logger->info("School21 API client initialized");
+    } else {
+      logger->warn("School21 API credentials not provided, ID verification will be disabled");
+    }
+    
     // Initialize bot
     bot::Bot telegram_bot(bot_token);
     telegram_bot.initialize();
+    telegram_bot.setDependencies(db_pool_shared, std::move(group_repo), 
+                                  std::move(player_repo), std::move(match_repo),
+                                  std::move(school21_client));
     logger->info("Telegram bot initialized");
     
     // Start bot
