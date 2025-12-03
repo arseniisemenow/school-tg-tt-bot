@@ -27,7 +27,8 @@ ConnectionPool::~ConnectionPool() {
 
 std::unique_ptr<ConnectionPool> ConnectionPool::create(
     const Config& config) {
-  return std::make_unique<ConnectionPool>(config);
+  // Use new directly since we're in a member function and have access to private constructor
+  return std::unique_ptr<ConnectionPool>(new ConnectionPool(config));
 }
 
 std::shared_ptr<pqxx::connection> ConnectionPool::createConnection() {

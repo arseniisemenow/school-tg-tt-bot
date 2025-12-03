@@ -39,7 +39,7 @@ class ConnectionPool {
   
   Config config_;
   std::vector<std::shared_ptr<pqxx::connection>> pool_;
-  std::mutex mutex_;
+  mutable std::mutex mutex_;  // Mutable to allow locking in const methods
   int active_connections_ = 0;
   
   std::shared_ptr<pqxx::connection> createConnection();

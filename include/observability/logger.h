@@ -39,7 +39,7 @@ class Logger {
  private:
   Logger() = default;
   LogLevel level_ = LogLevel::INFO;
-  std::mutex mutex_;
+  mutable std::mutex mutex_;  // Mutable to allow locking in const methods
   
   std::string levelToString(LogLevel level) const;
   std::string formatMessage(LogLevel level, const std::string& message,

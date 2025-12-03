@@ -118,15 +118,55 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     tgbotxx
 )
 
-# Ensure libpqxx include directories are added
+# Ensure libpqxx include directories and libraries are added
 # Note: Conan builds libpqxx in Release mode, but we're building in Debug
-# The target uses generator expressions, so we need to ensure includes work for both
+# The target uses generator expressions, so we need to ensure includes and libs work for both
 if(TARGET libpqxx::pqxx)
-    # Read the include directory from the Conan-generated file
+    # Read the include directory and library path from the Conan-generated file
     include("${CMAKE_CURRENT_BINARY_DIR}/libpqxx-release-x86_64-data.cmake")
     if(libpqxx_INCLUDE_DIRS_RELEASE)
         message(STATUS "Adding libpqxx include dir: ${libpqxx_INCLUDE_DIRS_RELEASE}")
         target_include_directories(${PROJECT_NAME} PRIVATE ${libpqxx_INCLUDE_DIRS_RELEASE})
+    endif()
+    # Manually link the library since generator expressions don't work for Debug builds
+    if(libpqxx_PACKAGE_FOLDER_RELEASE)
+        find_library(LIBPQXX_LIB 
+            NAMES pqxx libpqxx libpqxx-7.9
+            PATHS "${libpqxx_PACKAGE_FOLDER_RELEASE}/lib"
+            NO_DEFAULT_PATH
+        )
+        if(LIBPQXX_LIB)
+            message(STATUS "Found libpqxx library: ${LIBPQXX_LIB}")
+            target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBPQXX_LIB})
+        endif()
+        # Also link PostgreSQL client library (libpq) and its dependencies
+        # Find libpq from Conan cache - need to link all required libraries
+        file(GLOB LIBPQ_CONAN_PATHS "/root/.conan2/p/b/libpq*/p/lib/libpq.a")
+        if(LIBPQ_CONAN_PATHS)
+            get_filename_component(LIBPQ_DIR "${LIBPQ_CONAN_PATHS}" DIRECTORY)
+            list(GET LIBPQ_CONAN_PATHS 0 LIBPQ_LIB)
+            message(STATUS "Found libpq library: ${LIBPQ_LIB}")
+            target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBPQ_LIB})
+            # Link additional PostgreSQL libraries that libpq depends on
+            find_library(LIBPQ_COMMON_LIB pgcommon PATHS "${LIBPQ_DIR}" NO_DEFAULT_PATH)
+            find_library(LIBPQ_PORT_LIB pgport PATHS "${LIBPQ_DIR}" NO_DEFAULT_PATH)
+            if(LIBPQ_COMMON_LIB)
+                target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBPQ_COMMON_LIB})
+            endif()
+            if(LIBPQ_PORT_LIB)
+                target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBPQ_PORT_LIB})
+            endif()
+        else()
+            # Fallback to system libpq
+            find_library(LIBPQ_SYSTEM_LIB pq PATHS /usr/lib /usr/lib/x86_64-linux-gnu)
+            if(LIBPQ_SYSTEM_LIB)
+                message(STATUS "Found system libpq library: ${LIBPQ_SYSTEM_LIB}")
+                target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBPQ_SYSTEM_LIB})
+            else()
+                message(STATUS "Linking system libpq")
+                target_link_libraries(${PROJECT_NAME} PRIVATE pq)
+            endif()
+        endif()
     endif()
 endif()
 
@@ -142,6 +182,33 @@ if(CURL_FOUND)
     endif()
 else()
     message(FATAL_ERROR "CURL not found")
+endif()
+
+# Link OpenSSL libraries (needed by tgbotxx/CPR)
+# tgbotxx uses OpenSSL from Conan, but we need to ensure crypto library is linked
+if(OPENSSL_SSL_LIBRARY AND OPENSSL_CRYPTO_LIBRARY)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${OPENSSL_SSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY})
+else()
+    # Fallback to system OpenSSL
+    find_library(OPENSSL_SSL_LIB ssl PATHS /usr/lib /usr/lib/x86_64-linux-gnu)
+    find_library(OPENSSL_CRYPTO_LIB crypto PATHS /usr/lib /usr/lib/x86_64-linux-gnu)
+    if(OPENSSL_SSL_LIB AND OPENSSL_CRYPTO_LIB)
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${OPENSSL_SSL_LIB} ${OPENSSL_CRYPTO_LIB})
+    else()
+        target_link_libraries(${PROJECT_NAME} PRIVATE ssl crypto)
+    endif()
+endif()
+
+# Link zlib (needed by curl which is used by tgbotxx/CPR)
+if(ZLIB_Z_LIBRARY)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${ZLIB_Z_LIBRARY})
+else()
+    find_library(ZLIB_LIB z PATHS /usr/lib /usr/lib/x86_64-linux-gnu)
+    if(ZLIB_LIB)
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${ZLIB_LIB})
+    else()
+        target_link_libraries(${PROJECT_NAME} PRIVATE z)
+    endif()
 endif()
 
 message(STATUS "Found nlohmann_json")

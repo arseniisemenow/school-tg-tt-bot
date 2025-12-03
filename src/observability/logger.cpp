@@ -11,7 +11,8 @@
 namespace observability {
 
 std::shared_ptr<Logger> Logger::getInstance() {
-  static std::shared_ptr<Logger> instance = std::make_shared<Logger>();
+  // Use new directly since we're in a member function and have access to private constructor
+  static std::shared_ptr<Logger> instance(new Logger());
   return instance;
 }
 
