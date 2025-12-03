@@ -1,0 +1,30 @@
+
+About school21 API:
+School21 OpenAPI Specification
+[ Base URL: https://platform.21-school.ru/services/21-school/api/v1 ]
+
+Step 1
+
+·
+
+To get an access token (JWT) you need to send a POST request to the Access Token URL (https://auth.21-school.ru/auth/realms/EduPowerKeycloak/protocol/openid-connect/token). In the request body you need to specify the values for the following parameters: "username" (=$login), "password" (=$password), "grant_type" (="password"), and "client_id" (="s21-open-api"). These values should be sent as URL-encoded data (x-www-form-urlencoded).
+
+Curl
+
+curl -L "https://auth.21-school.ru/auth/realms/EduPowerKeycloak/protocol/openid-connect/token" \
+-H 'Content-Type: application/x-www-form-urlencoded' \
+-d 'client_id=s21-open-api' \
+-d 'username=$LOGIN' \
+-d 'password=$PASSWORD' \
+-d 'grant_type=password'
+Step 2
+
+·
+
+In case of successful authentication, the response will include an access token and a refresh token
+
+Step 3
+
+·
+
+Use the access token to send requests to the API. Place it in the Authorization header (Bearer $token) to authenticate your application

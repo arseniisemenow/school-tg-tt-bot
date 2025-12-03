@@ -1,0 +1,80 @@
+# Docker Compose for local development
+# Based on ADR-014: Development Workflow and Local Setup
+
+# version is obsolete in Docker Compose v2+
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: school-tg-bot-postgres
+    environment:
+      POSTGRES_DB: school_tg_bot_dev
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: dev_password
+    ports:
+      - "5433:5432"  # Use 5433 on host to avoid conflict with local PostgreSQL
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bot-network
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: school-tg-bot-dev
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://dev_user:dev_password@postgres:5432/school_tg_bot_dev
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=school_tg_bot_dev
+      - POSTGRES_USER=dev_user
+      - POSTGRES_PASSWORD=dev_password
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - SCHOOL21_API_USERNAME=${SCHOOL21_API_USERNAME:-}
+      - SCHOOL21_API_PASSWORD=${SCHOOL21_API_PASSWORD:-}
+      - CONFIG_FILE=/app/config/config.dev.json
+    volumes:
+      # Mount source code for development (hot reload)
+      - .:/app
+      # Preserve build directory
+      - bot_build:/app/build
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bot-network
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+
+  # Optional: OpenTelemetry Collector for observability
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    container_name: school-tg-bot-otel
+    volumes:
+      - ./otel-collector-config.dev.yaml:/etc/otel-collector-config.yaml
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "4317:4317"  # OTLP gRPC
+      - "4318:4318"  # OTLP HTTP
+    networks:
+      - bot-network
+    profiles:
+      - observability
+
+volumes:
+  postgres_data:
+  bot_build:
+
+networks:
+  bot-network:
+    driver: bridge
+

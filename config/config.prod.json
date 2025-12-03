@@ -1,0 +1,64 @@
+{
+  "database": {
+    "connection_pool": {
+      "min_size": 2,
+      "max_size": 10,
+      "idle_timeout_seconds": 300,
+      "max_lifetime_seconds": 3600
+    },
+    "query_timeout_seconds": 30
+  },
+  "telegram": {
+    "webhook": {
+      "enabled": true,
+      "port": 8443,
+      "path": "/webhook"
+    },
+    "polling": {
+      "enabled": false,
+      "timeout_seconds": 30
+    },
+    "rate_limit": {
+      "per_user_per_minute": 10,
+      "per_group_per_minute": 100
+    }
+  },
+  "school21": {
+    "api": {
+      "base_url": "https://platform.21-school.ru/services/21-school/api/v1",
+      "timeout_seconds": 10,
+      "max_retries": 3
+    },
+    "verification": {
+      "cache_ttl_success_hours": 24,
+      "cache_ttl_failure_hours": 1,
+      "auto_delete_delay_minutes": 5
+    }
+  },
+  "backup": {
+    "schedule": "0 2 * * *",
+    "local_path": "/var/backups/school-tg-bot",
+    "retention_days": 14,
+    "remote": {
+      "provider": "s3",
+      "bucket": "school-tg-bot-backups"
+    }
+  },
+  "observability": {
+    "log_level": "INFO",
+    "metrics_export_interval_seconds": 10,
+    "trace_sampling_rate": 0.1
+  },
+  "abuse_prevention": {
+    "spam_threshold": 5,
+    "spam_window_seconds": 10,
+    "match_spam_limit_per_hour": 10,
+    "match_spam_limit_per_day": 50
+  },
+  "elo": {
+    "k_factor": 32,
+    "initial_elo": 1500,
+    "max_elo": 10000
+  }
+}
+

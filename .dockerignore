@@ -1,0 +1,52 @@
+# Build artifacts
+cmake-build-*/
+build/
+*.o
+*.a
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Conan
+conanbuildinfo.cmake
+conan.lock
+conan_imports_manifest.txt
+
+# Environment
+.env
+.env.local
+
+# Config (if contains secrets)
+config/config.local.json
+
+# Database
+*.db
+*.sqlite
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed in container)
+docs/
+
+# Tests (not needed in production container)
+tests/
+
+# ADRs (not needed in container)
+docs/adr/
+

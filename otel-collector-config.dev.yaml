@@ -1,0 +1,43 @@
+# OpenTelemetry Collector configuration for development
+# Based on ADR-007: Observability Strategy
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+exporters:
+  # Console exporter for development (logs to stdout)
+  logging:
+    loglevel: debug
+  # Optional: File exporters for local development
+  file:
+    path: /tmp/traces.json
+  file/2:
+    path: /tmp/metrics.json
+  file/3:
+    path: /tmp/logs.json
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging, file]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging, file/2]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging, file/3]
+
