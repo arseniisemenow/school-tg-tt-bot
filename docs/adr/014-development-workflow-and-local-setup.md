@@ -157,47 +157,110 @@ INSERT INTO matches (group_id, player1_id, player2_id, player1_score, player2_sc
 
 ### Development Scripts
 
-#### Setup Script
-- **Script**: `scripts/setup.sh`
-- **Purpose**: Initial setup for new developers
-- **Actions**:
-  1. Check prerequisites (Docker, Docker Compose)
-  2. Copy `.env.example` to `.env`
-  3. Build Docker images
-  4. Start services
-  5. Run migrations
-  6. Seed development data
-- **Usage**: `./scripts/setup.sh`
+All scripts are located in the `scripts/` directory and are designed to be run inside the bot container (unless otherwise specified).
 
-#### Development Script
-- **Script**: `scripts/dev.sh`
-- **Purpose**: Start development server
+#### Environment Setup Script
+- **Script**: `scripts/setup-env.sh`
+- **Purpose**: Install and configure development environment dependencies
+- **Location**: Inside bot container at `/app/scripts/setup-env.sh`
 - **Actions**:
-  1. Check database connectivity
-  2. Run migrations (if needed)
-  3. Start bot in development mode
-  4. Enable hot reload (if supported)
-- **Usage**: `docker-compose up bot` or `./scripts/dev.sh`
+  1. Detect Conan profile (if not already configured)
+  2. Run `conan install . --output-folder=build --build=missing -s compiler.cppstd=20`
+  3. Verify dependencies are installed correctly
+  4. Create build directory structure if needed
+- **Usage**: `./scripts/setup-env.sh` (inside bot container)
+- **When to Run**:
+  - First time setup
+  - After modifying `conanfile.txt`
+  - When dependencies need to be refreshed
+- **Idempotent**: Yes, safe to run multiple times
+
+#### Build Script
+- **Script**: `scripts/build.sh`
+- **Purpose**: Build the C++ application
+- **Location**: Inside bot container at `/app/scripts/build.sh`
+- **Actions**:
+  1. Check if Conan dependencies are installed
+  2. Configure CMake with Conan toolchain: `cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug`
+  3. Build the application: `cmake --build build`
+  4. Verify binary was created
+- **Usage**: `./scripts/build.sh` (inside bot container)
+- **Output**: Binary at `build/school_tg_tt_bot`
+- **Build Type**: Debug (for development)
 
 #### Test Script
 - **Script**: `scripts/test.sh`
 - **Purpose**: Run test suite
+- **Location**: Inside bot container at `/app/scripts/test.sh`
 - **Actions**:
-  1. Start test database
-  2. Run migrations
-  3. Run unit tests
-  4. Run integration tests
-  5. Generate coverage reports
-- **Usage**: `./scripts/test.sh`
+  1. Check if application is built
+  2. Run unit tests (if configured)
+  3. Run integration tests (if configured)
+  4. Generate coverage reports (if configured)
+  5. Exit with appropriate exit code
+- **Usage**: `./scripts/test.sh` (inside bot container)
+- **Options**:
+  - `--unit`: Run only unit tests
+  - `--integration`: Run only integration tests
+  - `--coverage`: Generate coverage reports
 
-#### Cleanup Script
-- **Script**: `scripts/cleanup.sh`
-- **Purpose**: Clean up development environment
+#### Run Script
+- **Script**: `scripts/run.sh`
+- **Purpose**: Start the application for manual testing
+- **Location**: Inside bot container at `/app/scripts/run.sh`
 - **Actions**:
-  1. Stop containers
-  2. Remove volumes (optional flag)
-  3. Clean build artifacts
-- **Usage**: `./scripts/cleanup.sh`
+  1. Check if application is built
+  2. Verify database connectivity
+  3. Check required environment variables
+  4. Start the application: `./build/school_tg_tt_bot`
+- **Usage**: `./scripts/run.sh` (inside bot container)
+- **Alternative**: Run binary directly: `./build/school_tg_tt_bot`
+
+#### Migration Script
+- **Script**: `scripts/migrate.sh`
+- **Purpose**: Run database migrations
+- **Location**: Inside bot container at `/app/scripts/migrate.sh`
+- **Actions**:
+  1. Check database connectivity
+  2. Run Flyway migrations
+  3. Report migration status
+- **Usage**: `./scripts/migrate.sh` (inside bot container)
+
+#### Seed Development Data Script
+- **Script**: `scripts/seed-dev.sh`
+- **Purpose**: Populate database with development test data
+- **Location**: Inside bot container at `/app/scripts/seed-dev.sh`
+- **Actions**:
+  1. Check database connectivity
+  2. Run seed SQL scripts
+  3. Verify seed data was inserted
+- **Usage**: `./scripts/seed-dev.sh` (inside bot container)
+- **Idempotent**: Yes, safe to run multiple times
+
+#### Initial Setup Script (Host Machine)
+- **Script**: `scripts/setup.sh` (optional, for convenience)
+- **Purpose**: Initial setup for new developers (run from host)
+- **Location**: On host machine at `scripts/setup.sh`
+- **Actions**:
+  1. Check prerequisites (Docker, Docker Compose)
+  2. Copy `.env.example` to `.env` (if not exists)
+  3. Build Docker images: `docker compose build`
+  4. Start services: `docker compose up -d`
+  5. Provide instructions for next steps
+- **Usage**: `./scripts/setup.sh` (from host machine)
+- **Note**: This is a convenience script; developers can also follow manual steps
+
+#### Cleanup Script (Host Machine)
+- **Script**: `scripts/cleanup.sh` (optional)
+- **Purpose**: Clean up development environment
+- **Location**: On host machine at `scripts/cleanup.sh`
+- **Actions**:
+  1. Stop containers: `docker compose down`
+  2. Remove volumes (if `--volumes` flag provided)
+  3. Clean build artifacts (optional)
+- **Usage**: 
+  - `./scripts/cleanup.sh` - Stop containers
+  - `./scripts/cleanup.sh --volumes` - Stop containers and remove volumes
 
 ### Environment Setup
 
@@ -240,15 +303,167 @@ INSERT INTO matches (group_id, player1_id, player2_id, player1_score, player2_sc
 
 ### Development Workflow
 
-#### Typical Workflow
+#### Initial Setup (First Time)
 1. **Clone Repository**: `git clone <repo>`
-2. **Setup Environment**: `./scripts/setup.sh`
-3. **Start Services**: `docker-compose up -d`
-4. **Develop**: Make code changes
-5. **Test**: `./scripts/test.sh`
-6. **Run Migrations**: `docker-compose exec bot flyway migrate`
-7. **Seed Data**: `./scripts/seed_dev.sh` (if needed)
-8. **Commit**: Commit changes with proper messages
+2. **Create Environment File**: Copy `.env.example` to `.env` and fill in required values
+3. **Start Services**: `docker compose up -d` (starts PostgreSQL and optionally OTEL Collector)
+4. **Enter Bot Container**: `docker compose exec bot bash`
+5. **Setup Environment**: Inside container, run `./scripts/setup-env.sh` (installs Conan dependencies)
+6. **Build Application**: Inside container, run `./scripts/build.sh`
+7. **Run Migrations**: `./scripts/migrate.sh` (if needed)
+8. **Seed Data**: `./scripts/seed-dev.sh` (optional, for test data)
+
+#### Daily Development Workflow
+
+The development process is designed to be fast and efficient, with all services managed through Docker Compose:
+
+##### Step 1: Start All Services
+Start PostgreSQL and optionally OTEL Collector using Docker Compose:
+
+```bash
+# Start all required services (postgres, bot container)
+docker compose up -d
+
+# Optionally start OTEL Collector for observability
+docker compose --profile observability up -d otel-collector
+```
+
+This will:
+- Start PostgreSQL database container
+- Start bot container (interactive shell, ready for development)
+- Optionally start OTEL Collector if observability profile is enabled
+- All services are networked together and ready to use
+
+##### Step 2: Enter Bot Container
+Enter the bot container to perform development tasks:
+
+```bash
+docker compose exec bot bash
+```
+
+The container has:
+- All build tools (GCC 12, CMake, Conan 2.x)
+- Source code mounted at `/app` (changes on host are reflected in container)
+- Build directory persisted in Docker volume
+- Access to PostgreSQL via `postgres:5432` hostname
+- Access to OTEL Collector via `otel-collector:4317/4318` if enabled
+
+##### Step 3: Setup Environment (First Time or After Dependency Changes)
+Inside the bot container, run the environment setup script:
+
+```bash
+./scripts/setup-env.sh
+```
+
+This script:
+- Runs `conan install` to install all C++ dependencies
+- Configures Conan profile if needed
+- Sets up build directory structure
+- Can be run multiple times safely (idempotent)
+- Only reinstalls dependencies if `conanfile.txt` has changed
+
+**Note**: This step is only needed:
+- On first setup
+- When `conanfile.txt` is modified
+- When dependencies need to be refreshed
+
+##### Step 4: Build the Application
+Build the C++ application:
+
+```bash
+./scripts/build.sh
+```
+
+This script:
+- Configures CMake with Conan toolchain
+- Builds the application in Debug mode (for development)
+- Places the binary in `build/school_tg_tt_bot`
+- Shows build progress and errors
+
+**Note**: After code changes, simply run this script again to rebuild.
+
+##### Step 5: Run Tests or Start Application
+
+**Option A: Run Tests**
+```bash
+./scripts/test.sh
+```
+
+This will:
+- Run unit tests
+- Run integration tests (if configured)
+- Generate test coverage reports
+- Exit with appropriate exit code
+
+**Option B: Start Application for Manual Testing**
+```bash
+./scripts/run.sh
+```
+
+Or run directly:
+```bash
+./build/school_tg_tt_bot
+```
+
+The application will:
+- Connect to PostgreSQL database
+- Connect to Telegram Bot API (using token from environment)
+- Start processing Telegram messages
+- Log to console (development mode)
+
+##### Iterative Development Cycle
+
+After making code changes:
+
+1. **Rebuild**: `./scripts/build.sh` (inside container)
+2. **Test**: `./scripts/test.sh` (inside container) OR
+3. **Run**: `./scripts/run.sh` (inside container) to test manually via Telegram
+4. **Exit Container**: `exit` when done
+5. **Stop Services**: `docker compose down` (optional, containers can stay running)
+
+##### Quick Reference Commands
+
+**From Host Machine:**
+```bash
+# Start all services
+docker compose up -d
+
+# Start with observability
+docker compose --profile observability up -d
+
+# Enter bot container
+docker compose exec bot bash
+
+# View logs
+docker compose logs -f bot
+
+# Stop all services
+docker compose down
+
+# Stop and remove volumes (clean slate)
+docker compose down -v
+```
+
+**Inside Bot Container:**
+```bash
+# Setup environment (conan install)
+./scripts/setup-env.sh
+
+# Build application
+./scripts/build.sh
+
+# Run tests
+./scripts/test.sh
+
+# Run application
+./scripts/run.sh
+
+# Run migrations
+./scripts/migrate.sh
+
+# Seed development data
+./scripts/seed-dev.sh
+```
 
 #### Hot Reload (If Supported)
 - **File Watching**: Watch for file changes
@@ -272,17 +487,70 @@ INSERT INTO matches (group_id, player1_id, player2_id, player1_score, player2_sc
 
 ### Testing in Development
 
+#### Testing Workflow
+
+Testing is integrated into the daily development workflow:
+
+1. **Enter Bot Container**: `docker compose exec bot bash`
+2. **Build Application**: `./scripts/build.sh` (if not already built)
+3. **Run Tests**: `./scripts/test.sh`
+
 #### Test Database
-- **Separate Database**: `school_tg_bot_test`
-- **Isolation**: Tests don't affect development database
-- **Setup**: Created automatically by test scripts
-- **Cleanup**: Cleaned after tests
+- **Separate Database**: `school_tg_bot_test` (optional, can use dev database for integration tests)
+- **Isolation**: Unit tests don't require database; integration tests use test database
+- **Setup**: Created automatically by test scripts if needed
+- **Cleanup**: Test database is cleaned/reset between test runs
 
 #### Running Tests
-- **Unit Tests**: `./scripts/test.sh --unit`
-- **Integration Tests**: `./scripts/test.sh --integration`
-- **All Tests**: `./scripts/test.sh`
-- **Watch Mode**: Optional watch mode for TDD
+
+**Inside Bot Container:**
+
+```bash
+# Run all tests
+./scripts/test.sh
+
+# Run only unit tests
+./scripts/test.sh --unit
+
+# Run only integration tests
+./scripts/test.sh --integration
+
+# Run tests with coverage
+./scripts/test.sh --coverage
+```
+
+#### Manual Testing via Telegram
+
+For manual testing of bot functionality:
+
+1. **Start Application**: `./scripts/run.sh` (inside bot container)
+2. **Interact with Bot**: Send messages to the bot via Telegram
+3. **Monitor Logs**: Application logs are printed to console
+4. **Check Database**: Query database to verify state changes
+5. **Stop Application**: Press `Ctrl+C` to stop
+
+#### Test Types
+
+- **Unit Tests**: Test individual components in isolation
+  - No database required
+  - Fast execution
+  - Run frequently during development
+
+- **Integration Tests**: Test components working together
+  - May require test database
+  - Test database interactions
+  - Test Telegram API interactions (mocked or test bot)
+
+- **End-to-End Tests**: Full system testing
+  - Requires all services running
+  - Uses test Telegram bot
+  - Tests complete user workflows
+
+#### Test Data Management
+
+- **Unit Tests**: Use mocks and stubs, no persistent data
+- **Integration Tests**: Use test database with seed data
+- **Manual Testing**: Use development database with seed data from `scripts/seed-dev.sh`
 
 ### Documentation
 
@@ -336,4 +604,6 @@ INSERT INTO matches (group_id, player1_id, player2_id, player1_score, player2_sc
 
 ### Manual Migration Execution
 - **Rejected**: Automated migrations reduce errors
+
+
 

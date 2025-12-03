@@ -17,6 +17,8 @@ RUN apt-get update && \
     python3-pip \
     postgresql-client \
     curl \
+    zlib1g-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set GCC 12 as default

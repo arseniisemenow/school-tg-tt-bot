@@ -317,3 +317,5 @@ We will implement Telegram bot features with the following design:
 - **Considered**: Allow variations in command format
 - **Decision**: Strict format is clearer and easier to parse
 
+
+

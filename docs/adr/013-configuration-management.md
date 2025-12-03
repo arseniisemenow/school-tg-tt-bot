@@ -294,3 +294,5 @@ std::string botToken = std::getenv("TELEGRAM_BOT_TOKEN");
 ### Config in Database
 - **Rejected**: Circular dependency (need config to connect to database)
 
+
+
