@@ -251,6 +251,7 @@ if(TEST_SOURCES)
     file(GLOB_RECURSE TEST_LIB_SOURCES
         "src/database/*.cpp"
         "src/repositories/*.cpp"
+        "src/utils/*.cpp"
         "src/observability/*.cpp"
     )
     
