@@ -2,6 +2,7 @@
 #include "database/connection_pool.h"
 #include "database/transaction.h"
 #include "observability/logger.h"
+#include "utils/validation.h"
 #include <stdexcept>
 #include <sstream>
 #include <iomanip>
@@ -17,12 +18,20 @@ PlayerRepository::PlayerRepository(std::shared_ptr<database::ConnectionPool> poo
 }
 
 models::Player PlayerRepository::createOrGet(int64_t telegram_user_id) {
-  if (telegram_user_id <= 0) {
-    throw std::invalid_argument("telegram_user_id must be positive");
+  auto logger = observability::Logger::getInstance();
+  logger->debug("PlayerRepository::createOrGet called with telegram_user_id=" + std::to_string(telegram_user_id));
+  
+  // Input validation
+  try {
+    utils::validateId(telegram_user_id, "telegram_user_id");
+  } catch (const std::invalid_argument& e) {
+    logger->error("PlayerRepository::createOrGet - Invalid input: " + std::string(e.what()));
+    throw;
   }
   
   auto conn = pool_->acquire();
   if (!conn || !conn->is_open()) {
+    logger->error("PlayerRepository::createOrGet - Failed to acquire database connection");
     throw std::runtime_error("Failed to acquire database connection");
   }
   
@@ -50,14 +59,29 @@ models::Player PlayerRepository::createOrGet(int64_t telegram_user_id) {
     pool_->release(conn);
     
     if (result.empty()) {
+      logger->error("PlayerRepository::createOrGet - Failed to create or retrieve player with telegram_user_id=" + std::to_string(telegram_user_id));
       throw std::runtime_error("Failed to create or retrieve player");
     }
     
-    return rowToPlayer(result[0]);
+    auto player = rowToPlayer(result[0]);
+    logger->info("PlayerRepository::createOrGet - Successfully retrieved player id=" + std::to_string(player.id) + " telegram_user_id=" + std::to_string(telegram_user_id));
+    return player;
+  } catch (const pqxx::unique_violation& e) {
+    pool_->release(conn);
+    logger->warn("PlayerRepository::createOrGet - Unique violation (should not happen): " + std::string(e.what()));
+    // Retry to get existing player
+    auto existing = getByTelegramId(telegram_user_id);
+    if (existing.has_value()) {
+      return existing.value();
+    }
+    throw std::runtime_error("Failed to create or retrieve player after unique violation");
+  } catch (const pqxx::sql_error& e) {
+    pool_->release(conn);
+    logger->error("PlayerRepository::createOrGet - SQL error: " + std::string(e.what()) + " Query: " + e.query());
+    throw std::runtime_error("Database error in createOrGet: " + std::string(e.what()));
   } catch (const std::exception& e) {
     pool_->release(conn);
-    auto logger = observability::Logger::getInstance();
-    logger->error("Error in createOrGet: " + std::string(e.what()));
+    logger->error("PlayerRepository::createOrGet - Error: " + std::string(e.what()) + " telegram_user_id=" + std::to_string(telegram_user_id));
     throw;
   }
 }
@@ -138,12 +162,23 @@ std::optional<models::Player> PlayerRepository::getById(int64_t id) {
 }
 
 void PlayerRepository::update(const models::Player& player) {
-  if (player.id <= 0) {
-    throw std::invalid_argument("player.id must be positive");
+  auto logger = observability::Logger::getInstance();
+  logger->debug("PlayerRepository::update called with player_id=" + std::to_string(player.id));
+  
+  // Input validation
+  try {
+    utils::validateId(player.id, "player.id");
+    if (player.school_nickname.has_value()) {
+      utils::validateStringLength(player.school_nickname.value(), utils::MAX_STRING_LENGTH, "school_nickname");
+    }
+  } catch (const std::invalid_argument& e) {
+    logger->error("PlayerRepository::update - Invalid input: " + std::string(e.what()) + " player_id=" + std::to_string(player.id));
+    throw;
   }
   
   auto conn = pool_->acquire();
   if (!conn || !conn->is_open()) {
+    logger->error("PlayerRepository::update - Failed to acquire database connection");
     throw std::runtime_error("Failed to acquire database connection");
   }
   
@@ -177,12 +212,24 @@ void PlayerRepository::update(const models::Player& player) {
       );
     }
     
+    auto affected = txn.exec_params("SELECT COUNT(*) as cnt FROM players WHERE id = $1", player.id);
+    if (affected.empty() || affected[0]["cnt"].as<int>() == 0) {
+      logger->warn("PlayerRepository::update - Player not found: player_id=" + std::to_string(player.id));
+      txn.commit();
+      pool_->release(conn);
+      throw std::runtime_error("Player not found");
+    }
+    
     txn.commit();
     pool_->release(conn);
+    logger->info("PlayerRepository::update - Successfully updated player_id=" + std::to_string(player.id));
+  } catch (const pqxx::sql_error& e) {
+    pool_->release(conn);
+    logger->error("PlayerRepository::update - SQL error: " + std::string(e.what()) + " Query: " + e.query() + " player_id=" + std::to_string(player.id));
+    throw std::runtime_error("Database error in update: " + std::string(e.what()));
   } catch (const std::exception& e) {
     pool_->release(conn);
-    auto logger = observability::Logger::getInstance();
-    logger->error("Error in update: " + std::string(e.what()));
+    logger->error("PlayerRepository::update - Error: " + std::string(e.what()) + " player_id=" + std::to_string(player.id));
     throw;
   }
 }

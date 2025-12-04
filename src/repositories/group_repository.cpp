@@ -2,6 +2,7 @@
 #include "database/connection_pool.h"
 #include "database/transaction.h"
 #include "observability/logger.h"
+#include "utils/validation.h"
 #include <stdexcept>
 #include <sstream>
 #include <iomanip>
@@ -193,12 +194,40 @@ models::GroupPlayer GroupRepository::getOrCreateGroupPlayer(
 
 bool GroupRepository::updateGroupPlayer(
     const models::GroupPlayer& group_player) {
-  if (group_player.id <= 0) {
-    throw std::invalid_argument("group_player.id must be positive");
+  auto logger = observability::Logger::getInstance();
+  logger->debug("GroupRepository::updateGroupPlayer called with group_player_id=" + std::to_string(group_player.id) + 
+                " elo=" + std::to_string(group_player.current_elo) + " version=" + std::to_string(group_player.version));
+  
+  // Input validation
+  try {
+    utils::validateId(group_player.id, "group_player.id");
+    utils::validateId(group_player.group_id, "group_player.group_id");
+    utils::validateId(group_player.player_id, "group_player.player_id");
+    utils::validateElo(group_player.current_elo, "current_elo");
+    if (group_player.matches_played < 0) {
+      throw std::invalid_argument("matches_played cannot be negative, got: " + std::to_string(group_player.matches_played));
+    }
+    if (group_player.matches_won < 0) {
+      throw std::invalid_argument("matches_won cannot be negative, got: " + std::to_string(group_player.matches_won));
+    }
+    if (group_player.matches_lost < 0) {
+      throw std::invalid_argument("matches_lost cannot be negative, got: " + std::to_string(group_player.matches_lost));
+    }
+    if (group_player.matches_won + group_player.matches_lost > group_player.matches_played) {
+      throw std::invalid_argument("matches_won + matches_lost cannot exceed matches_played");
+    }
+    if (group_player.version < 0) {
+      throw std::invalid_argument("version cannot be negative, got: " + std::to_string(group_player.version));
+    }
+  } catch (const std::invalid_argument& e) {
+    logger->error("GroupRepository::updateGroupPlayer - Invalid input: " + std::string(e.what()) + 
+                  " group_player_id=" + std::to_string(group_player.id));
+    throw;
   }
   
   auto conn = pool_->acquire();
   if (!conn || !conn->is_open()) {
+    logger->error("GroupRepository::updateGroupPlayer - Failed to acquire database connection");
     throw std::runtime_error("Failed to acquire database connection");
   }
   
@@ -226,12 +255,31 @@ bool GroupRepository::updateGroupPlayer(
     txn.commit();
     pool_->release(conn);
     
+    bool success = result.affected_rows() > 0;
+    if (success) {
+      logger->info("GroupRepository::updateGroupPlayer - Successfully updated group_player_id=" + 
+                   std::to_string(group_player.id) + " new_elo=" + std::to_string(group_player.current_elo));
+    } else {
+      logger->warn("GroupRepository::updateGroupPlayer - Optimistic lock conflict: group_player_id=" + 
+                    std::to_string(group_player.id) + " version=" + std::to_string(group_player.version));
+    }
+    
     // Return true if any rows were affected (optimistic lock succeeded)
-    return result.affected_rows() > 0;
+    return success;
+  } catch (const pqxx::check_violation& e) {
+    pool_->release(conn);
+    logger->error("GroupRepository::updateGroupPlayer - Check constraint violation: " + std::string(e.what()) + 
+                  " group_player_id=" + std::to_string(group_player.id) + " elo=" + std::to_string(group_player.current_elo));
+    throw std::runtime_error("ELO value violates database constraints: " + std::string(e.what()));
+  } catch (const pqxx::sql_error& e) {
+    pool_->release(conn);
+    logger->error("GroupRepository::updateGroupPlayer - SQL error: " + std::string(e.what()) + " Query: " + e.query() + 
+                  " group_player_id=" + std::to_string(group_player.id));
+    throw std::runtime_error("Database error in updateGroupPlayer: " + std::string(e.what()));
   } catch (const std::exception& e) {
     pool_->release(conn);
-    auto logger = observability::Logger::getInstance();
-    logger->error("Error in updateGroupPlayer: " + std::string(e.what()));
+    logger->error("GroupRepository::updateGroupPlayer - Error: " + std::string(e.what()) + 
+                  " group_player_id=" + std::to_string(group_player.id));
     throw;
   }
 }
@@ -284,12 +332,23 @@ std::vector<models::GroupPlayer> GroupRepository::getRankings(
 }
 
 void GroupRepository::configureTopic(const models::GroupTopic& topic) {
-  if (topic.group_id <= 0) {
-    throw std::invalid_argument("topic.group_id must be positive");
+  auto logger = observability::Logger::getInstance();
+  logger->debug("GroupRepository::configureTopic called with group_id=" + std::to_string(topic.group_id) + 
+                " topic_type=" + topic.topic_type);
+  
+  // Input validation
+  try {
+    utils::validateId(topic.group_id, "topic.group_id");
+    utils::validateTopicType(topic.topic_type);
+  } catch (const std::invalid_argument& e) {
+    logger->error("GroupRepository::configureTopic - Invalid input: " + std::string(e.what()) + 
+                  " group_id=" + std::to_string(topic.group_id));
+    throw;
   }
   
   auto conn = pool_->acquire();
   if (!conn || !conn->is_open()) {
+    logger->error("GroupRepository::configureTopic - Failed to acquire database connection");
     throw std::runtime_error("Failed to acquire database connection");
   }
   
@@ -321,10 +380,17 @@ void GroupRepository::configureTopic(const models::GroupTopic& topic) {
     
     txn.commit();
     pool_->release(conn);
+    logger->info("GroupRepository::configureTopic - Successfully configured topic group_id=" + 
+                 std::to_string(topic.group_id) + " topic_type=" + topic.topic_type);
+  } catch (const pqxx::sql_error& e) {
+    pool_->release(conn);
+    logger->error("GroupRepository::configureTopic - SQL error: " + std::string(e.what()) + " Query: " + e.query() + 
+                  " group_id=" + std::to_string(topic.group_id));
+    throw std::runtime_error("Database error in configureTopic: " + std::string(e.what()));
   } catch (const std::exception& e) {
     pool_->release(conn);
-    auto logger = observability::Logger::getInstance();
-    logger->error("Error in configureTopic: " + std::string(e.what()));
+    logger->error("GroupRepository::configureTopic - Error: " + std::string(e.what()) + 
+                  " group_id=" + std::to_string(topic.group_id));
     throw;
   }
 }
