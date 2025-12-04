@@ -242,6 +242,11 @@ void Bot::handleMemberJoin(const tgbotxx::Ptr<tgbotxx::ChatMemberUpdated>& updat
     
     // Log member join - no automatic action per ADR-011
     // Users register themselves via /id or /id_guest commands
+    
+    // Send important info to logs topic if configured
+    std::string username = update->from->username.empty() ? 
+        ("User " + std::to_string(update->from->id)) : update->from->username;
+    sendToLogsTopic(chat_id, "👋 " + username + " joined the group. Welcome!");
   } catch (const std::exception& e) {
     logger_->error("Error handling member join: " + std::string(e.what()));
   }
@@ -324,7 +329,8 @@ void Bot::handleStart(const tgbotxx::Ptr<tgbotxx::Message>& message) {
         "/help - Show this help message\n\n"
         "For command-specific help, use: /<command> help";
     
-    sendMessage(message->chat->id, help_text);
+    auto topic_id = getTopicId(message);
+    sendMessage(message->chat->id, help_text, std::nullopt, topic_id);
   } catch (const std::exception& e) {
     logger_->error("Error handling start command: " + std::string(e.what()));
     sendErrorMessage(message, "Failed to process command");
@@ -336,12 +342,13 @@ void Bot::handleMatch(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     // Check for help
     std::string args = extractCommandArgs(message);
     if (args == "help" || args.find("help") == 0) {
+      auto topic_id = getTopicId(message);
       sendMessage(message->chat->id, 
                   "Match command format:\n"
                   "/match @player1 @player2 <score1> <score2>\n\n"
                   "Example: /match @alice @bob 3 1\n\n"
                   "This command must be used in the matches topic (if configured).",
-                  message->messageId);
+                  message->messageId, topic_id);
       return;
     }
     
@@ -368,9 +375,9 @@ void Bot::handleMatch(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     auto player1 = getOrCreatePlayer(parsed.player1_user_id);
     auto player2 = getOrCreatePlayer(parsed.player2_user_id);
     
-    // Get or create group players
-    auto gp1 = getOrCreateGroupPlayer(group.id, player1.id);
-    auto gp2 = getOrCreateGroupPlayer(group.id, player2.id);
+    // Get or create group players (ensure they exist in the group)
+    getOrCreateGroupPlayer(group.id, player1.id);
+    getOrCreateGroupPlayer(group.id, player2.id);
     
     // Check for duplicate
     std::string idempotency_key = generateIdempotencyKey(message);
@@ -566,20 +573,33 @@ void Bot::handleMatch(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     }, retry_config);
     
     // Send success message
-    std::string player1_username = message->from ? 
-        (message->from->username.empty() ? "player1" : message->from->username) : "player1";
-    std::string player2_username = "player2";  // TODO: Get from message entities
+    std::string player1_username = "player1";
+    std::string player2_username = "player2";
+    
+    // Try to get usernames from message entities or database
+    if (message->from) {
+      player1_username = message->from->username.empty() ? 
+          ("player" + std::to_string(parsed.player1_user_id)) : message->from->username;
+    }
+    
+    // Get player2 username from database if available
+    auto p2 = player_repo_->getByTelegramId(parsed.player2_user_id);
+    if (p2) {
+      // We don't store username in database, so use user ID
+      player2_username = "player" + std::to_string(parsed.player2_user_id);
+    }
     
     std::ostringstream response;
     response << "Match registered: @" << player1_username << " (" << parsed.score1 
              << ") vs @" << player2_username << " (" << parsed.score2 << ")\n";
     response << "ELO: @" << player1_username;
+    auto topic_id = getTopicId(message);
     if (elo1_change >= 0) response << " +";
     response << elo1_change << ", @" << player2_username;
     if (elo2_change >= 0) response << " +";
     response << elo2_change;
     
-    sendMessage(message->chat->id, response.str(), message->messageId);
+    sendMessage(message->chat->id, response.str(), message->messageId, topic_id);
     
   } catch (const std::exception& e) {
     logger_->error("Error handling match command: " + std::string(e.what()));
@@ -592,11 +612,12 @@ void Bot::handleRanking(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     // Check for help
     std::string args = extractCommandArgs(message);
     if (args == "help" || args.find("help") == 0) {
+      auto topic_id = getTopicId(message);
       sendMessage(message->chat->id,
                   "Ranking command:\n"
                   "/ranking or /rank\n\n"
                   "Shows current ELO rankings for this group.",
-                  message->messageId);
+                  message->messageId, topic_id);
       return;
     }
     
@@ -613,7 +634,8 @@ void Bot::handleRanking(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     auto rankings = group_repo_->getRankings(group.id, 10);
     
     if (rankings.empty()) {
-      sendMessage(message->chat->id, "No rankings available yet.", message->messageId);
+      auto topic_id = getTopicId(message);
+      sendMessage(message->chat->id, "No rankings available yet.", message->messageId, topic_id);
       return;
     }
     
@@ -628,7 +650,8 @@ void Bot::handleRanking(const tgbotxx::Ptr<tgbotxx::Message>& message) {
       rank++;
     }
     
-    sendMessage(message->chat->id, response.str(), message->messageId);
+    auto topic_id = getTopicId(message);
+    sendMessage(message->chat->id, response.str(), message->messageId, topic_id);
     
   } catch (const std::exception& e) {
     logger_->error("Error handling ranking command: " + std::string(e.what()));
@@ -641,11 +664,12 @@ void Bot::handleId(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     // Check for help
     std::string args = extractCommandArgs(message);
     if (args == "help" || args.find("help") == 0) {
+      auto topic_id = getTopicId(message);
       sendMessage(message->chat->id,
                   "ID command:\n"
                   "/id <school_nickname>\n\n"
                   "Verify your School21 nickname. This command must be used in the ID topic.",
-                  message->messageId);
+                  message->messageId, topic_id);
       return;
     }
     
@@ -704,10 +728,11 @@ void Bot::handleId(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     // Add success emoji and remove loading
     reactToMessage(message->chat->id, message->messageId, "👍");
     
+    auto topic_id = getTopicId(message);
     sendMessage(message->chat->id, 
                 "Nickname verified: " + nickname + 
                 (player.is_verified_student ? " (Active student)" : " (Non-active)"),
-                message->messageId);
+                message->messageId, topic_id);
     
   } catch (const std::exception& e) {
     logger_->error("Error handling ID command: " + std::string(e.what()));
@@ -721,12 +746,13 @@ void Bot::handleIdGuest(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     // Check for help
     std::string args = extractCommandArgs(message);
     if (args == "help" || args.find("help") == 0) {
+      auto topic_id = getTopicId(message);
       sendMessage(message->chat->id,
                   "ID Guest command:\n"
                   "/id_guest\n\n"
                   "Register as a guest player (no School21 verification required).\n"
                   "This command must be used in the ID topic.",
-                  message->messageId);
+                  message->messageId, topic_id);
       return;
     }
     
@@ -751,9 +777,10 @@ void Bot::handleIdGuest(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     // Add success emoji
     reactToMessage(message->chat->id, message->messageId, "👍");
     
+    auto topic_id = getTopicId(message);
     sendMessage(message->chat->id, 
                 "Registered as guest player. You can now participate in matches.",
-                message->messageId);
+                message->messageId, topic_id);
     
   } catch (const std::exception& e) {
     logger_->error("Error handling ID guest command: " + std::string(e.what()));
@@ -766,6 +793,7 @@ void Bot::handleUndo(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     // Check for help
     std::string args = extractCommandArgs(message);
     if (args == "help" || args.find("help") == 0) {
+      auto topic_id = getTopicId(message);
       sendMessage(message->chat->id,
                   "Undo command:\n"
                   "/undo\n"
@@ -773,7 +801,7 @@ void Bot::handleUndo(const tgbotxx::Ptr<tgbotxx::Message>& message) {
                   "Undo the last match or a specific match (if replying).\n"
                   "Only match players and admins can undo matches.\n"
                   "Matches can only be undone within 24 hours (admins can undo any match).",
-                  message->messageId);
+                  message->messageId, topic_id);
       return;
     }
     
@@ -783,7 +811,6 @@ void Bot::handleUndo(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     }
     
     int64_t user_id = message->from->id;
-    int64_t match_id = 0;
     
     // Check if replying to a message (undo specific match)
     if (message->replyToMessage && message->replyToMessage->messageId) {
@@ -811,9 +838,10 @@ void Bot::handleUndo(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     // Undo match
     undoMatchTransaction(match.id, user_id);
     
+    auto topic_id = getTopicId(message);
     sendMessage(message->chat->id, 
                 "Match #" + std::to_string(match.id) + " undone. ELO restored.",
-                message->messageId);
+                message->messageId, topic_id);
     
   } catch (const std::exception& e) {
     logger_->error("Error handling undo command: " + std::string(e.what()));
@@ -826,6 +854,7 @@ void Bot::handleConfigTopic(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     // Check for help
     std::string args = extractCommandArgs(message);
     if (args == "help" || args.find("help") == 0) {
+      auto topic_id = getTopicId(message);
       sendMessage(message->chat->id,
                   "Config Topic command:\n"
                   "/config_topic <topic_type>\n\n"
@@ -835,7 +864,7 @@ void Bot::handleConfigTopic(const tgbotxx::Ptr<tgbotxx::Message>& message) {
                   "- ranking: Ranking display\n"
                   "- matches: Match registration\n"
                   "- logs: Logs that users must know about",
-                  message->messageId);
+                  message->messageId, topic_id);
       return;
     }
     
@@ -875,10 +904,11 @@ void Bot::handleConfigTopic(const tgbotxx::Ptr<tgbotxx::Message>& message) {
     
     group_repo_->configureTopic(topic);
     
+    auto reply_topic_id = getTopicId(message);
     sendMessage(message->chat->id, 
                 "Topic configured: " + topic_type + 
                 (topic_id ? " (topic ID: " + std::to_string(*topic_id) + ")" : " (no topic ID)"),
-                message->messageId);
+                message->messageId, reply_topic_id);
     
   } catch (const std::exception& e) {
     logger_->error("Error handling config topic command: " + std::string(e.what()));
@@ -942,13 +972,35 @@ std::vector<int64_t> Bot::extractMentionedUserIds(const tgbotxx::Ptr<tgbotxx::Me
   for (const auto& entity : message->entities) {
     if (!entity) continue;
     
-    // Check entity type using enum comparison
-    // tgbotxx::MessageEntity::Type is an enum, need to compare with enum values
-    // For now, check if user is present (text_mention has user)
+    // Check if user is present (text_mention has user)
     if (entity->user) {
-      user_ids.push_back(entity->user->id);
+      int64_t user_id = entity->user->id;
+      user_ids.push_back(user_id);
+      
+      // Cache username if available
+      if (!entity->user->username.empty()) {
+        std::lock_guard<std::mutex> lock(username_cache_mutex_);
+        username_cache_[entity->user->username] = user_id;
+      }
+    } else {
+      // Handle username mentions (@username)
+      // Extract username from text and look it up
+      if (entity->offset >= 0 && entity->length > 0 && 
+          entity->offset + entity->length <= static_cast<int>(message->text.length())) {
+        std::string mention_text = message->text.substr(entity->offset, entity->length);
+        // Remove @ if present
+        if (!mention_text.empty() && mention_text[0] == '@') {
+          std::string username = mention_text.substr(1);
+          auto user_id = lookupUserIdByUsername(username, message->chat->id);
+          if (user_id) {
+            user_ids.push_back(*user_id);
+          } else {
+            logger_->warn("Could not resolve username mention: @" + username + 
+                         " (user should use text mention or be in chat)");
+          }
+        }
+      }
     }
-    // TODO: Handle mention type (username mentions) - need to look up user ID from username
   }
   
   return user_ids;
@@ -956,12 +1008,57 @@ std::vector<int64_t> Bot::extractMentionedUserIds(const tgbotxx::Ptr<tgbotxx::Me
 
 std::optional<int64_t> Bot::extractUserIdFromMention(const std::string& mention, 
                                                       const tgbotxx::Ptr<tgbotxx::Message>& message) {
-  // TODO: Implement username to user_id lookup
+  if (mention.empty() || mention[0] != '@') {
+    return std::nullopt;
+  }
+  
+  std::string username = mention.substr(1);
+  if (message && message->chat) {
+    return lookupUserIdByUsername(username, message->chat->id);
+  }
+  
   return std::nullopt;
+}
+
+std::optional<int64_t> Bot::lookupUserIdByUsername(const std::string& username, int64_t /* chat_id */) {
+  try {
+    // First, check cache
+    {
+      std::lock_guard<std::mutex> lock(username_cache_mutex_);
+      auto it = username_cache_.find(username);
+      if (it != username_cache_.end()) {
+        return it->second;
+      }
+    }
+    
+    // Try to get from database (if we stored it)
+    // Note: We don't currently store username in players table
+    
+    // Try Telegram API - use getChatMember if we can
+    // Note: Telegram API doesn't have direct "get user by username" method
+    // We would need searchChatMembers which might not be available in tgbotxx
+    
+    // For now, return nullopt - username will be cached when we see it in message entities
+    logger_->debug("Username not found in cache: @" + username);
+    return std::nullopt;
+  } catch (const std::exception& e) {
+    logger_->error("Error looking up username: " + std::string(e.what()));
+    return std::nullopt;
+  }
+}
+
+bool Bot::areTopicsEnabled() {
+  auto& config = config::Config::getInstance();
+  return config.getBool("telegram.topics.enabled", true);
 }
 
 bool Bot::isCommandInCorrectTopic(const tgbotxx::Ptr<tgbotxx::Message>& message, 
                                   const std::string& topic_type) {
+  // If topics are disabled, always allow
+  if (!areTopicsEnabled()) {
+    return true;
+  }
+  
   if (!group_repo_) return true;  // If no repo, allow (backward compatibility)
   
   auto topic_id = getTopicId(message);
@@ -991,7 +1088,7 @@ bool Bot::isAdmin(const tgbotxx::Ptr<tgbotxx::Message>& message) {
   return isGroupAdmin(message->chat->id, message->from->id);
 }
 
-bool Bot::isGroupAdmin(int64_t chat_id, int64_t user_id) {
+bool Bot::isGroupAdmin(int64_t /* chat_id */, int64_t /* user_id */) {
   try {
     // TODO: Use Telegram API to check if user is admin
     // For now, return false (can be implemented later)
@@ -1002,7 +1099,7 @@ bool Bot::isGroupAdmin(int64_t chat_id, int64_t user_id) {
   }
 }
 
-bool Bot::canUndoMatch(int64_t match_id, int64_t user_id, const models::Match& match) {
+bool Bot::canUndoMatch(int64_t /* match_id */, int64_t user_id, const models::Match& match) {
   // Check if user is one of the players
   auto player = player_repo_->getByTelegramId(user_id);
   if (player && (player->id == match.player1_id || player->id == match.player2_id)) {
@@ -1016,7 +1113,8 @@ bool Bot::canUndoMatch(int64_t match_id, int64_t user_id, const models::Match& m
 }
 
 void Bot::sendMessage(int64_t chat_id, const std::string& text, 
-                     std::optional<int> reply_to_message_id) {
+                     std::optional<int> reply_to_message_id,
+                     std::optional<int> message_thread_id) {
   try {
     // Use tgbotxx API to send message
     // Bot inherits from tgbotxx::Bot, so we can call parent's sendMessage
@@ -1027,13 +1125,17 @@ void Bot::sendMessage(int64_t chat_id, const std::string& text,
     if (reply_to_message_id && reply_to_message_id.value() > 0) {
       reply_params = tgbotxx::Ptr<tgbotxx::ReplyParameters>(new tgbotxx::ReplyParameters());
       reply_params->messageId = reply_to_message_id.value();
+      // Note: messageThreadId is set via the sendMessage parameter, not in ReplyParameters
     }
+    
+    // Use message_thread_id if provided, otherwise 0 (main chat)
+    int thread_id = message_thread_id.value_or(0);
     
     auto& api_ref = *api();
     auto sent_message = api_ref.sendMessage(
         chat_id,
         text,
-        0,  // messageThreadId
+        thread_id,  // messageThreadId
         "",  // parseMode
         std::vector<tgbotxx::Ptr<tgbotxx::MessageEntity>>(),  // entities
         false,  // disableNotification
@@ -1063,7 +1165,33 @@ void Bot::sendMessage(int64_t chat_id, const std::string& text,
 void Bot::sendErrorMessage(const tgbotxx::Ptr<tgbotxx::Message>& message, 
                            const std::string& error) {
   if (!message) return;
-  sendMessage(message->chat->id, "❌ " + error, message->messageId);
+  auto topic_id = getTopicId(message);
+  sendMessage(message->chat->id, "❌ " + error, message->messageId, topic_id);
+}
+
+void Bot::sendToLogsTopic(int64_t chat_id, const std::string& text) {
+  if (!areTopicsEnabled() || !group_repo_) {
+    // If topics disabled or no repo, send to main chat
+    sendMessage(chat_id, text);
+    return;
+  }
+  
+  try {
+    auto group = getOrCreateGroup(chat_id);
+    auto logs_topic = group_repo_->getTopic(group.id, 0, "logs");
+    
+    if (logs_topic && logs_topic->is_active) {
+      // Send to logs topic
+      sendMessage(chat_id, text, std::nullopt, logs_topic->telegram_topic_id);
+    } else {
+      // No logs topic configured, send to main chat
+      sendMessage(chat_id, text);
+    }
+  } catch (const std::exception& e) {
+    logger_->error("Error sending to logs topic: " + std::string(e.what()));
+    // Fallback to main chat
+    sendMessage(chat_id, text);
+  }
 }
 
 void Bot::reactToMessage(int64_t chat_id, int message_id, const std::string& emoji) {

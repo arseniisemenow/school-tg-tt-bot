@@ -7,6 +7,8 @@
 #include <vector>
 #include <optional>
 #include <regex>
+#include <unordered_map>
+#include <mutex>
 #include <tgbotxx/Bot.hpp>
 #include <tgbotxx/utils/Ptr.hpp>
 #include <tgbotxx/objects/Message.hpp>
@@ -94,6 +96,10 @@ class Bot : public tgbotxx::Bot {
   std::unique_ptr<utils::EloCalculator> elo_calculator_;
   observability::Logger* logger_;
   
+  // Username cache (username -> user_id mapping)
+  std::unordered_map<std::string, int64_t> username_cache_;
+  std::mutex username_cache_mutex_;
+  
   // Command handlers
   void handleStart(const tgbotxx::Ptr<tgbotxx::Message>& message);
   void handleMatch(const tgbotxx::Ptr<tgbotxx::Message>& message);
@@ -128,11 +134,13 @@ class Bot : public tgbotxx::Bot {
   std::vector<int64_t> extractMentionedUserIds(const tgbotxx::Ptr<tgbotxx::Message>& message);
   std::optional<int64_t> extractUserIdFromMention(const std::string& mention, 
                                                    const tgbotxx::Ptr<tgbotxx::Message>& message);
+  std::optional<int64_t> lookupUserIdByUsername(const std::string& username, int64_t chat_id);
   
   // Topic validation
   bool isCommandInCorrectTopic(const tgbotxx::Ptr<tgbotxx::Message>& message, 
                                const std::string& topic_type);
   std::optional<int> getTopicId(const tgbotxx::Ptr<tgbotxx::Message>& message);
+  bool areTopicsEnabled();
   
   // Permission checks
   bool isAdmin(const tgbotxx::Ptr<tgbotxx::Message>& message);
@@ -141,10 +149,12 @@ class Bot : public tgbotxx::Bot {
   
   // Message sending helpers
   void sendMessage(int64_t chat_id, const std::string& text, 
-                   std::optional<int> reply_to_message_id = std::nullopt);
+                   std::optional<int> reply_to_message_id = std::nullopt,
+                   std::optional<int> message_thread_id = std::nullopt);
   void sendErrorMessage(const tgbotxx::Ptr<tgbotxx::Message>& message, 
                        const std::string& error);
   void reactToMessage(int64_t chat_id, int message_id, const std::string& emoji);
+  void sendToLogsTopic(int64_t chat_id, const std::string& text);
   
   // Group and player helpers
   models::Group getOrCreateGroup(int64_t telegram_group_id, const std::string& name = "");

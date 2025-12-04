@@ -21,6 +21,9 @@
     "rate_limit": {
       "per_user_per_minute": 10,
       "per_group_per_minute": 100
+    },
+    "topics": {
+      "enabled": true
     }
   },
   "school21": {
