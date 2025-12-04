@@ -10,6 +10,10 @@ namespace database {
 class ConnectionPool;
 }
 
+namespace pqxx {
+class row;
+}
+
 namespace repositories {
 
 class MatchRepository {
@@ -39,6 +43,9 @@ class MatchRepository {
 
  private:
   std::shared_ptr<database::ConnectionPool> pool_;
+  
+  // Helper method to convert database row to Match model
+  models::Match rowToMatch(const pqxx::row& row);
 };
 
 }  // namespace repositories

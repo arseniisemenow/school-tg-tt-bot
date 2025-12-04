@@ -10,6 +10,10 @@ namespace database {
 class ConnectionPool;
 }
 
+namespace pqxx {
+class row;
+}
+
 namespace repositories {
 
 class PlayerRepository {
@@ -33,6 +37,9 @@ class PlayerRepository {
 
  private:
   std::shared_ptr<database::ConnectionPool> pool_;
+  
+  // Helper to convert database row to Player model
+  models::Player rowToPlayer(const pqxx::row& row);
 };
 
 }  // namespace repositories

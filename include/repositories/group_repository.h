@@ -11,6 +11,10 @@ namespace database {
 class ConnectionPool;
 }
 
+namespace pqxx {
+class row;
+}
+
 namespace repositories {
 
 class GroupRepository {
@@ -48,6 +52,11 @@ class GroupRepository {
 
  private:
   std::shared_ptr<database::ConnectionPool> pool_;
+  
+  // Helper methods to convert database rows to models
+  models::Group rowToGroup(const pqxx::row& row);
+  models::GroupPlayer rowToGroupPlayer(const pqxx::row& row);
+  models::GroupTopic rowToGroupTopic(const pqxx::row& row);
 };
 
 }  // namespace repositories

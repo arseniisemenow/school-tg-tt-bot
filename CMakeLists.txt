@@ -60,6 +60,15 @@ FetchContent_Declare(tgbotxx
 )
 FetchContent_MakeAvailable(tgbotxx)
 
+# Fetch Google Test
+FetchContent_Declare(googletest
+    GIT_REPOSITORY "https://github.com/google/googletest.git"
+    GIT_TAG "v1.14.0"
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE
+)
+FetchContent_MakeAvailable(googletest)
+
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
@@ -226,4 +235,105 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type")
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_options(${PROJECT_NAME} PRIVATE -g)
+endif()
+
+# Enable testing
+enable_testing()
+
+# Test source files
+file(GLOB_RECURSE TEST_SOURCES
+    "tests/**/*.cpp"
+)
+
+if(TEST_SOURCES)
+    # Create test executable
+    # Include source files needed for tests (exclude config as tests don't need it)
+    file(GLOB_RECURSE TEST_LIB_SOURCES
+        "src/database/*.cpp"
+        "src/repositories/*.cpp"
+        "src/observability/*.cpp"
+    )
+    
+    add_executable(${PROJECT_NAME}_tests
+        ${TEST_SOURCES}
+        ${TEST_LIB_SOURCES}
+    )
+    
+    # Include directories
+    target_include_directories(${PROJECT_NAME}_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    
+    # Get nlohmann_json include directories from Conan
+    if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/nlohmann_json-release-x86_64-data.cmake")
+        include("${CMAKE_CURRENT_BINARY_DIR}/nlohmann_json-release-x86_64-data.cmake")
+        if(nlohmann_json_INCLUDE_DIRS_RELEASE)
+            target_include_directories(${PROJECT_NAME}_tests PRIVATE ${nlohmann_json_INCLUDE_DIRS_RELEASE})
+        endif()
+    endif()
+    
+    # Link test executable with same libraries as main executable
+    # nlohmann_json is already found above for main target
+    target_link_libraries(${PROJECT_NAME}_tests PRIVATE
+        nlohmann_json::nlohmann_json
+        libpqxx::pqxx
+        GTest::gtest
+        GTest::gtest_main
+        GTest::gmock
+    )
+    
+    # Link same libraries as main executable
+    if(TARGET libpqxx::pqxx)
+        if(libpqxx_INCLUDE_DIRS_RELEASE)
+            target_include_directories(${PROJECT_NAME}_tests PRIVATE ${libpqxx_INCLUDE_DIRS_RELEASE})
+        endif()
+        if(LIBPQXX_LIB)
+            target_link_libraries(${PROJECT_NAME}_tests PRIVATE ${LIBPQXX_LIB})
+        endif()
+        if(LIBPQ_LIB)
+            target_link_libraries(${PROJECT_NAME}_tests PRIVATE ${LIBPQ_LIB})
+        endif()
+        if(LIBPQ_COMMON_LIB)
+            target_link_libraries(${PROJECT_NAME}_tests PRIVATE ${LIBPQ_COMMON_LIB})
+        endif()
+        if(LIBPQ_PORT_LIB)
+            target_link_libraries(${PROJECT_NAME}_tests PRIVATE ${LIBPQ_PORT_LIB})
+        endif()
+    endif()
+    
+    if(CURL_FOUND)
+        if(CURL_LIBRARIES)
+            target_link_libraries(${PROJECT_NAME}_tests PRIVATE ${CURL_LIBRARIES})
+        else()
+            target_link_libraries(${PROJECT_NAME}_tests PRIVATE curl)
+        endif()
+        if(CURL_INCLUDE_DIRS)
+            target_include_directories(${PROJECT_NAME}_tests PRIVATE ${CURL_INCLUDE_DIRS})
+        endif()
+    endif()
+    
+    if(OPENSSL_SSL_LIBRARY AND OPENSSL_CRYPTO_LIBRARY)
+        target_link_libraries(${PROJECT_NAME}_tests PRIVATE ${OPENSSL_SSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY})
+    endif()
+    
+    if(ZLIB_Z_LIBRARY)
+        target_link_libraries(${PROJECT_NAME}_tests PRIVATE ${ZLIB_Z_LIBRARY})
+    endif()
+    
+    # Compiler options for tests
+    target_compile_options(${PROJECT_NAME}_tests PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_compile_options(${PROJECT_NAME}_tests PRIVATE -g)
+    endif()
+    
+    # Add test to CTest
+    add_test(NAME ${PROJECT_NAME}_tests COMMAND ${PROJECT_NAME}_tests)
+    
+    message(STATUS "Tests enabled: ${PROJECT_NAME}_tests")
 endif()
