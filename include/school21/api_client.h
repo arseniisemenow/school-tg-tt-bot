@@ -28,13 +28,13 @@ class ApiClient {
   };
   
   ApiClient(const Config& config);
-  ~ApiClient();
+  virtual ~ApiClient();
   
   // Get participant by login
-  std::optional<Participant> getParticipant(const std::string& login);
+  virtual std::optional<Participant> getParticipant(const std::string& login);
   
   // Check if participant exists and is active
-  bool verifyParticipant(const std::string& login);
+  virtual bool verifyParticipant(const std::string& login);
 
  private:
   Config config_;

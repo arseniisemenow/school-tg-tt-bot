@@ -50,6 +50,10 @@ class GroupRepository {
                                              int telegram_topic_id,
                                              const std::string& topic_type);
 
+  // Get topic configuration by type (ignores telegram_topic_id)
+  std::optional<models::GroupTopic> getTopicByType(int64_t group_id,
+                                                   const std::string& topic_type);
+
  private:
   std::shared_ptr<database::ConnectionPool> pool_;
   

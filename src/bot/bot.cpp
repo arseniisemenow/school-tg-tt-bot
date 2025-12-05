@@ -30,9 +30,10 @@
 namespace bot {
 
 Bot::Bot(const std::string& token) 
-    : tgbotxx::Bot(token), 
-      token_(token),
-      logger_(observability::Logger::getInstance().get()) {
+    : BotBase<Bot>(),
+      ProductionBotApi(token),
+      token_(token) {
+  logger_ = observability::Logger::getInstance().get();
 }
 
 Bot::~Bot() {
@@ -1131,8 +1132,12 @@ void Bot::sendMessage(int64_t chat_id, const std::string& text,
     // Use message_thread_id if provided, otherwise 0 (main chat)
     int thread_id = message_thread_id.value_or(0);
     
-    auto& api_ref = *api();
-    auto sent_message = api_ref.sendMessage(
+    auto* api_impl = getBotApi();
+    if (!api_impl) {
+      logger_->error("API not available for sending message");
+      return;
+    }
+    auto sent_message = api_impl->sendMessage(
         chat_id,
         text,
         thread_id,  // messageThreadId
@@ -1209,7 +1214,12 @@ void Bot::reactToMessage(int64_t chat_id, int message_id, const std::string& emo
     reactions.push_back(tgbotxx::Ptr<tgbotxx::ReactionType>(reaction_type));
     
     // Call setMessageReaction through the API
-    bool success = (*api()).setMessageReaction(
+    auto* api_impl = getBotApi();
+    if (!api_impl) {
+      logger_->error("API not available for setting reaction");
+      return;
+    }
+    bool success = api_impl->setMessageReaction(
         chat_id,
         message_id,
         reactions,

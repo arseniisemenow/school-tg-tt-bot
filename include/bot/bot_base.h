@@ -1,10 +1,20 @@
-#ifndef BOT_BOT_H
-#define BOT_BOT_H
+#ifndef BOT_BOT_BASE_H
+#define BOT_BOT_BASE_H
 
-#include "bot/bot_base.h"
-#include "bot/production_bot_api.h"
+#include "bot_api.h"
 #include <memory>
 #include <string>
+#include <atomic>
+#include <vector>
+#include <optional>
+#include <regex>
+#include <unordered_map>
+#include <mutex>
+#include <tgbotxx/utils/Ptr.hpp>
+#include <tgbotxx/objects/Message.hpp>
+#include <tgbotxx/objects/ChatMemberUpdated.hpp>
+#include <tgbotxx/objects/User.hpp>
+#include <tgbotxx/objects/Chat.hpp>
 
 // Forward declarations
 namespace database {
@@ -42,17 +52,12 @@ struct Match;
 
 namespace bot {
 
-// Forward declaration
-class ProductionBotApi;
-
-// Production bot using tgbotxx::Bot and ProductionBotApi
-class Bot : public BotBase<Bot>, public ProductionBotApi {
+// CRTP base class for Bot - contains all bot logic
+// Derived class must inherit from BotApi and provide getApiImpl() method
+template<typename Derived>
+class BotBase {
  public:
-  explicit Bot(const std::string& token);
-  ~Bot() override;
-  
-  // Provide BotApi implementation for CRTP
-  BotApi* getApiImpl() { return this; }
+  virtual ~BotBase();
   
   // Initialize bot (set up handlers, dependencies, etc.)
   void initialize();
@@ -65,23 +70,39 @@ class Bot : public BotBase<Bot>, public ProductionBotApi {
       std::unique_ptr<repositories::MatchRepository> match_repo,
       std::unique_ptr<school21::ApiClient> school21_client);
   
-  // Start polling (override tgbotxx::Bot::start)
+  // Start polling (for production bot)
   void startPolling();
   
-  // Start webhook server
+  // Start webhook server (for production bot)
   void startWebhook(const std::string& webhook_url, int port);
   
   // Stop bot
   void stop();
+  
+  // Public methods for testing - allow tests to call protected methods
+  void onCommand(const tgbotxx::Ptr<tgbotxx::Message>& command);
+  void onChatMemberUpdated(const tgbotxx::Ptr<tgbotxx::ChatMemberUpdated>& chatMember);
+  void onAnyMessage(const tgbotxx::Ptr<tgbotxx::Message>& message);
+  
+ protected:
+  // Get the API implementation via CRTP
+  // Derived class must inherit from BotApi
+  BotApi* getBotApi() {
+    return static_cast<Derived*>(this)->getApiImpl();
+  }
+  
+  // Get derived instance for CRTP
+  Derived* derived() {
+    return static_cast<Derived*>(this);
+  }
+  
+  const Derived* derived() const {
+    return static_cast<const Derived*>(this);
+  }
 
  protected:
-  // Override tgbotxx::Bot virtual functions
-  void onCommand(const tgbotxx::Ptr<tgbotxx::Message>& command) override;
-  void onChatMemberUpdated(const tgbotxx::Ptr<tgbotxx::ChatMemberUpdated>& chatMember) override;
-  void onAnyMessage(const tgbotxx::Ptr<tgbotxx::Message>& message) override;
-
- private:
-  std::string token_;
+  // Protected so derived classes can initialize
+  bool running_ = false;
   
   // Dependencies
   std::shared_ptr<database::ConnectionPool> db_pool_;
@@ -91,6 +112,8 @@ class Bot : public BotBase<Bot>, public ProductionBotApi {
   std::unique_ptr<school21::ApiClient> school21_client_;
   std::unique_ptr<utils::EloCalculator> elo_calculator_;
   observability::Logger* logger_;
+
+ private:
   
   // Username cache (username -> user_id mapping)
   std::unordered_map<std::string, int64_t> username_cache_;
@@ -174,5 +197,8 @@ class Bot : public BotBase<Bot>, public ProductionBotApi {
 
 }  // namespace bot
 
-#endif  // BOT_BOT_H
+// Include implementation
+#include "bot/bot_base_impl.h"
+
+#endif  // BOT_BOT_BASE_H
 

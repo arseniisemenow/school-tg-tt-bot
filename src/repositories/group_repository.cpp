@@ -432,6 +432,43 @@ std::optional<models::GroupTopic> GroupRepository::getTopic(
   }
 }
 
+std::optional<models::GroupTopic> GroupRepository::getTopicByType(
+    int64_t group_id, const std::string& topic_type) {
+  if (group_id <= 0) {
+    return std::nullopt;
+  }
+
+  auto conn = pool_->acquire();
+  if (!conn || !conn->is_open()) {
+    throw std::runtime_error("Failed to acquire database connection");
+  }
+
+  try {
+    pqxx::work txn(*conn);
+
+    auto result = txn.exec_params(
+      "SELECT id, group_id, telegram_topic_id, topic_type, is_active, created_at "
+      "FROM group_topics "
+      "WHERE group_id = $1 AND topic_type = $2",
+      group_id, topic_type
+    );
+
+    txn.commit();
+    pool_->release(conn);
+
+    if (result.empty()) {
+      return std::nullopt;
+    }
+
+    return rowToGroupTopic(result[0]);
+  } catch (const std::exception& e) {
+    pool_->release(conn);
+    auto logger = observability::Logger::getInstance();
+    logger->error("Error in getTopicByType: " + std::string(e.what()));
+    throw;
+  }
+}
+
 models::Group GroupRepository::rowToGroup(const pqxx::row& row) {
   models::Group group;
   group.id = row["id"].as<int64_t>();
