@@ -1126,6 +1126,8 @@ void Bot::sendMessage(int64_t chat_id, const std::string& text,
     if (reply_to_message_id && reply_to_message_id.value() > 0) {
       reply_params = tgbotxx::Ptr<tgbotxx::ReplyParameters>(new tgbotxx::ReplyParameters());
       reply_params->messageId = reply_to_message_id.value();
+      // Set chat explicitly; default-initialized ReplyParameters uses chat_id=0.
+      reply_params->chatId = chat_id;
       // Note: messageThreadId is set via the sendMessage parameter, not in ReplyParameters
     }
     

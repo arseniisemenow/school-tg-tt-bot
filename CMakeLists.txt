@@ -247,12 +247,15 @@ file(GLOB_RECURSE TEST_SOURCES
 
 if(TEST_SOURCES)
     # Create test executable
-    # Include source files needed for tests (exclude config as tests don't need it)
+    # Include source files needed for tests
     file(GLOB_RECURSE TEST_LIB_SOURCES
         "src/database/*.cpp"
         "src/repositories/*.cpp"
         "src/utils/*.cpp"
         "src/observability/*.cpp"
+        "src/bot/*.cpp"
+        "src/school21/*.cpp"
+        "src/config/*.cpp"
     )
     
     add_executable(${PROJECT_NAME}_tests
@@ -264,6 +267,7 @@ if(TEST_SOURCES)
     target_include_directories(${PROJECT_NAME}_tests PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests
     )
     
     # Get nlohmann_json include directories from Conan
@@ -279,6 +283,7 @@ if(TEST_SOURCES)
     target_link_libraries(${PROJECT_NAME}_tests PRIVATE
         nlohmann_json::nlohmann_json
         libpqxx::pqxx
+        tgbotxx
         GTest::gtest
         GTest::gtest_main
         GTest::gmock

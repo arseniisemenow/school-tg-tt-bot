@@ -233,6 +233,8 @@ void BotBase<Derived>::sendMessage(int64_t chat_id, const std::string& text,
     if (reply_to_message_id && reply_to_message_id.value() > 0) {
       reply_params = tgbotxx::Ptr<tgbotxx::ReplyParameters>(new tgbotxx::ReplyParameters());
       reply_params->messageId = reply_to_message_id.value();
+      // Explicitly set chat to avoid Telegram rejecting replies with chat_id=0.
+      reply_params->chatId = chat_id;
     }
     
     int thread_id = message_thread_id.value_or(0);
