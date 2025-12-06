@@ -37,6 +37,10 @@ class ProductionBotApi : public BotApi, public tgbotxx::Bot {
       int message_id,
       const std::vector<tgbotxx::Ptr<tgbotxx::ReactionType>>& reaction_types,
       bool is_big = false) override;
+  
+  tgbotxx::Ptr<tgbotxx::ChatMember> getChatMember(
+      int64_t chat_id,
+      int64_t user_id) override;
 };
 
 }  // namespace bot

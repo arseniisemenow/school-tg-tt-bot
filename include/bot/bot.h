@@ -141,7 +141,7 @@ class Bot : public BotBase<Bot>, public ProductionBotApi {
   // Permission checks
   bool isAdmin(const tgbotxx::Ptr<tgbotxx::Message>& message);
   bool isGroupAdmin(int64_t chat_id, int64_t user_id);
-  bool canUndoMatch(int64_t match_id, int64_t user_id, const models::Match& match);
+  bool canUndoMatch(int64_t match_id, int64_t user_id, const models::Match& match, bool is_admin = false);
   
   // Message sending helpers
   void sendMessage(int64_t chat_id, const std::string& text, 

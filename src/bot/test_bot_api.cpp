@@ -2,6 +2,7 @@
 #include <tgbotxx/objects/Message.hpp>
 #include <tgbotxx/objects/Chat.hpp>
 #include <tgbotxx/objects/User.hpp>
+#include <tgbotxx/objects/ChatMember.hpp>
 
 namespace bot {
 
@@ -63,6 +64,31 @@ bool TestBotApi::setMessageReaction(
     bool /* is_big */) {
   // Mock implementation - always succeeds
   return true;
+}
+
+tgbotxx::Ptr<tgbotxx::ChatMember> TestBotApi::getChatMember(
+    int64_t chat_id,
+    int64_t user_id) {
+  auto chat_it = chat_members_.find(chat_id);
+  if (chat_it == chat_members_.end()) {
+    return nullptr;
+  }
+  auto user_it = chat_it->second.find(user_id);
+  if (user_it == chat_it->second.end()) {
+    return nullptr;
+  }
+  
+  auto member = tgbotxx::Ptr<tgbotxx::ChatMember>(new tgbotxx::ChatMember());
+  member->status = user_it->second;
+  member->user = tgbotxx::Ptr<tgbotxx::User>(new tgbotxx::User());
+  member->user->id = user_id;
+  return member;
+}
+
+void TestBotApi::setMockChatMemberStatus(int64_t chat_id,
+                                         int64_t user_id,
+                                         const std::string& status) {
+  chat_members_[chat_id][user_id] = status;
 }
 
 }  // namespace bot

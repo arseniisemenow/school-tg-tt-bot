@@ -12,6 +12,7 @@
 #include <mutex>
 #include <tgbotxx/utils/Ptr.hpp>
 #include <tgbotxx/objects/Message.hpp>
+#include <tgbotxx/objects/ChatMember.hpp>
 #include <tgbotxx/objects/ChatMemberUpdated.hpp>
 #include <tgbotxx/objects/User.hpp>
 #include <tgbotxx/objects/Chat.hpp>
@@ -162,10 +163,12 @@ class BotBase {
   bool areTopicsEnabled();
   
   // Permission checks
+ protected:
   bool isAdmin(const tgbotxx::Ptr<tgbotxx::Message>& message);
   bool isGroupAdmin(int64_t chat_id, int64_t user_id);
-  bool canUndoMatch(int64_t match_id, int64_t user_id, const models::Match& match);
+  bool canUndoMatch(int64_t match_id, int64_t user_id, const models::Match& match, bool is_admin = false);
   
+ private:
   // Message sending helpers
   void sendMessage(int64_t chat_id, const std::string& text, 
                    std::optional<int> reply_to_message_id = std::nullopt,

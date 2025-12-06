@@ -50,7 +50,7 @@ echo "Building application..."
 echo "This may take a few minutes..."
 echo ""
 
-cmake --build build
+cmake --build build -- -j
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Build failed"

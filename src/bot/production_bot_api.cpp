@@ -1,6 +1,7 @@
 #include "bot/production_bot_api.h"
 #include <tgbotxx/objects/ReplyParameters.hpp>
 #include <tgbotxx/objects/ReactionType.hpp>
+#include <tgbotxx/objects/ChatMember.hpp>
 
 namespace bot {
 
@@ -55,6 +56,12 @@ bool ProductionBotApi::setMessageReaction(
     bool is_big) {
   
   return api()->setMessageReaction(chat_id, message_id, reaction_types, is_big);
+}
+
+tgbotxx::Ptr<tgbotxx::ChatMember> ProductionBotApi::getChatMember(
+    int64_t chat_id,
+    int64_t user_id) {
+  return api()->getChatMember(chat_id, user_id);
 }
 
 }  // namespace bot

@@ -20,6 +20,7 @@
 #include "models/match.h"
 #include <tgbotxx/objects/ReplyParameters.hpp>
 #include <tgbotxx/objects/ReactionType.hpp>
+#include <tgbotxx/objects/ChatMember.hpp>
 #include <tgbotxx/Api.hpp>
 #include <pqxx/pqxx>
 #include <iostream>
@@ -908,13 +909,47 @@ bool BotBase<Derived>::isAdmin(const tgbotxx::Ptr<tgbotxx::Message>& message) {
 }
 
 template<typename Derived>
-bool BotBase<Derived>::isGroupAdmin(int64_t /* chat_id */, int64_t /* user_id */) {
-  return false;
+bool BotBase<Derived>::isGroupAdmin(int64_t chat_id, int64_t user_id) {
+  if (!logger_) {
+    logger_ = observability::Logger::getInstance().get();
+  }
+
+  if (chat_id == 0 || user_id == 0) {
+    logger_->warn("Admin check skipped: missing chat_id or user_id");
+    return false;
+  }
+
+  try {
+    auto* api_impl = getBotApi();
+    if (!api_impl) {
+      logger_->warn("Admin check failed: Bot API is not available");
+      return false;
+    }
+
+    auto member = api_impl->getChatMember(chat_id, user_id);
+    if (!member) {
+      logger_->warn("Admin check failed: getChatMember returned null (chat_id=" +
+                    std::to_string(chat_id) + ", user_id=" + std::to_string(user_id) + ")");
+      return false;
+    }
+
+    const std::string status = member->status;
+    if (status == "administrator" || status == "creator") {
+      return true;
+    }
+
+    logger_->info("User is not admin: status=" + status + ", chat_id=" +
+                  std::to_string(chat_id) + ", user_id=" + std::to_string(user_id));
+    return false;
+  } catch (const std::exception& e) {
+    logger_->error("Error checking admin status: " + std::string(e.what()));
+    return false;
+  }
 }
 
 template<typename Derived>
 bool BotBase<Derived>::canUndoMatch(int64_t /* match_id */, int64_t /* user_id */,
-                                   const models::Match& /* match */) {
+                                   const models::Match& /* match */, bool /* is_admin */) {
   return false;
 }
 

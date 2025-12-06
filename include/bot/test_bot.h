@@ -32,3 +32,4 @@ class TestBot : public BotBase<TestBot>, public TestBotApi {
 
 #endif  // BOT_TEST_BOT_H
 
+

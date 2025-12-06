@@ -24,6 +24,7 @@
 #include "models/match.h"
 #include <tgbotxx/objects/ReplyParameters.hpp>
 #include <tgbotxx/objects/ReactionType.hpp>
+#include <tgbotxx/objects/ChatMember.hpp>
 #include <tgbotxx/Api.hpp>
 #include <pqxx/pqxx>
 
@@ -1085,31 +1086,25 @@ std::optional<int> Bot::getTopicId(const tgbotxx::Ptr<tgbotxx::Message>& message
 }
 
 bool Bot::isAdmin(const tgbotxx::Ptr<tgbotxx::Message>& message) {
-  if (!message->chat || !message->from) return false;
-  return isGroupAdmin(message->chat->id, message->from->id);
+  return BotBase<Bot>::isAdmin(message);
 }
 
-bool Bot::isGroupAdmin(int64_t /* chat_id */, int64_t /* user_id */) {
-  try {
-    // TODO: Use Telegram API to check if user is admin
-    // For now, return false (can be implemented later)
-    return false;
-  } catch (const std::exception& e) {
-    logger_->error("Error checking admin status: " + std::string(e.what()));
-    return false;
-  }
+bool Bot::isGroupAdmin(int64_t chat_id, int64_t user_id) {
+  return BotBase<Bot>::isGroupAdmin(chat_id, user_id);
 }
 
-bool Bot::canUndoMatch(int64_t /* match_id */, int64_t user_id, const models::Match& match) {
+bool Bot::canUndoMatch(int64_t /* match_id */, int64_t user_id, const models::Match& match, bool is_admin) {
   // Check if user is one of the players
   auto player = player_repo_->getByTelegramId(user_id);
   if (player && (player->id == match.player1_id || player->id == match.player2_id)) {
     return true;
   }
   
-  // Check if user is admin
-  // TODO: Get chat_id from match and check admin status
-  // For now, return false
+  // Admins can undo any match
+  if (is_admin) {
+    return true;
+  }
+  
   return false;
 }
 
@@ -1321,9 +1316,29 @@ bool Bot::isMatchUndoable(const models::Match& match, int64_t user_id) {
     return false;
   }
   
+  bool is_admin = false;
+  int64_t telegram_group_id = 0;
+  if (group_repo_) {
+    auto group = group_repo_->getById(match.group_id);
+    if (group) {
+      telegram_group_id = group->telegram_group_id;
+      is_admin = isGroupAdmin(group->telegram_group_id, user_id);
+    } else {
+      logger_->warn("Group not found for undo permission check: group_id=" +
+                    std::to_string(match.group_id));
+    }
+  } else {
+    logger_->warn("Group repository not initialized for undo permission check");
+  }
+  
   // Check permission
-  if (!canUndoMatch(match.id, user_id, match)) {
+  if (!canUndoMatch(match.id, user_id, match, is_admin)) {
     return false;
+  }
+  
+  // Admins can bypass time limit
+  if (is_admin) {
+    return true;
   }
   
   // Check time limit (24 hours, configurable)
@@ -1331,8 +1346,6 @@ bool Bot::isMatchUndoable(const models::Match& match, int64_t user_id) {
   auto match_time = match.created_at;
   auto hours_since_match = std::chrono::duration_cast<std::chrono::hours>(now - match_time).count();
   
-  // TODO: Check if user is admin (admins can undo any match)
-  // For now, apply 24-hour limit to everyone
   if (hours_since_match > 24) {
     return false;
   }

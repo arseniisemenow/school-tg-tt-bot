@@ -3,6 +3,8 @@
 
 #include "bot_api.h"
 #include <tgbotxx/Api.hpp>
+#include <tgbotxx/objects/ChatMember.hpp>
+#include <tgbotxx/objects/User.hpp>
 #include <memory>
 #include <map>
 
@@ -40,6 +42,10 @@ class TestBotApi : public BotApi {
       const std::vector<tgbotxx::Ptr<tgbotxx::ReactionType>>& reaction_types,
       bool is_big = false) override;
   
+  tgbotxx::Ptr<tgbotxx::ChatMember> getChatMember(
+      int64_t chat_id,
+      int64_t user_id) override;
+  
   // Test helpers - allow tests to inspect sent messages
   struct SentMessage {
     int64_t chat_id;
@@ -51,11 +57,18 @@ class TestBotApi : public BotApi {
   std::vector<SentMessage> getSentMessages() const { return sent_messages_; }
   void clearSentMessages() { sent_messages_.clear(); }
   
+  // Test helper: set mocked chat member status (e.g., "administrator", "creator", "member")
+  void setMockChatMemberStatus(int64_t chat_id, int64_t user_id, const std::string& status);
+  void clearMockChatMembers() { chat_members_.clear(); }
+  
  private:
   // Mock API that doesn't make real calls
   std::unique_ptr<tgbotxx::Api> mock_api_;
   std::vector<SentMessage> sent_messages_;
   int next_message_id_ = 1;
+  
+  // Keyed by chat_id -> user_id -> status
+  std::map<int64_t, std::map<int64_t, std::string>> chat_members_;
 };
 
 }  // namespace bot

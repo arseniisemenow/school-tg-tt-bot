@@ -5,6 +5,7 @@
 #include <tgbotxx/objects/Message.hpp>
 #include <tgbotxx/objects/MessageEntity.hpp>
 #include <tgbotxx/objects/ReactionType.hpp>
+#include <tgbotxx/objects/ChatMember.hpp>
 #include <tgbotxx/Api.hpp>
 #include <tgbotxx/objects/IReplyMarkup.hpp>
 #include <tgbotxx/objects/LinkPreviewOptions.hpp>
@@ -48,6 +49,11 @@ class BotApi {
       int message_id,
       const std::vector<tgbotxx::Ptr<tgbotxx::ReactionType>>& reaction_types,
       bool is_big = false) = 0;
+  
+  // Fetch chat member (used for admin checks)
+  virtual tgbotxx::Ptr<tgbotxx::ChatMember> getChatMember(
+      int64_t chat_id,
+      int64_t user_id) = 0;
 };
 
 }  // namespace bot
