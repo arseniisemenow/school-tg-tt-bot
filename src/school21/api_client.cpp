@@ -6,6 +6,7 @@
 #include <mutex>
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
+#include "observability/logger.h"
 
 namespace school21 {
 
@@ -45,7 +46,7 @@ std::string ApiClient::getAccessToken() {
     }
   }
   
-  *token_ = authenticate();
+  token_ = authenticate();
   return token_->access_token;
 }
 
@@ -90,13 +91,29 @@ std::optional<Participant> ApiClient::getParticipant(const std::string& login) {
     
     auto json = nlohmann::json::parse(response);
     Participant participant;
-    participant.login = json["login"].get<std::string>();
-    participant.status = json["status"].get<std::string>();
-    participant.class_name = json.value("className", std::string());
-    participant.parallel_name = json.value("parallelName", std::string());
+    participant.login = json.value("login", login);
+    
+    // status may be null in some responses; treat null as empty string
+    if (json.contains("status") && json["status"].is_string()) {
+      participant.status = json["status"].get<std::string>();
+    } else {
+      participant.status = "";
+    }
+
+    // Optional fields
+    if (json.contains("className") && json["className"].is_string()) {
+      participant.class_name = json["className"].get<std::string>();
+    }
+    if (json.contains("parallelName") && json["parallelName"].is_string()) {
+      participant.parallel_name = json["parallelName"].get<std::string>();
+    }
     
     return participant;
-  } catch (const std::exception&) {
+  } catch (const std::exception& e) {
+    if (auto logger = observability::Logger::getInstance()) {
+      logger->error("School21 getParticipant failed for login '" + login +
+                    "': " + e.what());
+    }
     return std::nullopt;
   }
 }

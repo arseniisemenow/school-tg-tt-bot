@@ -703,9 +703,9 @@ void Bot::handleId(const tgbotxx::Ptr<tgbotxx::Message>& message) {
       return;
     }
     
-    // Add loading emoji
-    reactToMessage(message->chat->id, message->messageId, "⏳");
-    
+    // Add pending reaction with a widely supported emoji
+    reactToMessage(message->chat->id, message->messageId, "🤔");
+
     // Verify via School21 API
     if (!school21_client_) {
       reactToMessage(message->chat->id, message->messageId, "👎");

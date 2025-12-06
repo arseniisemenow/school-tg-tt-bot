@@ -5,6 +5,7 @@
 #include <chrono>
 #include <mutex>
 #include <algorithm>
+#include "observability/logger.h"
 
 namespace database {
 
@@ -15,7 +16,11 @@ ConnectionPool::ConnectionPool(const Config& config) : config_(config) {
       auto conn = createConnection();
       pool_.push_back(conn);
     } catch (const std::exception& e) {
-      // Log error but continue
+      if (auto logger = observability::Logger::getInstance()) {
+        logger->error("ConnectionPool: failed to pre-create connection " +
+                      std::to_string(i + 1) + "/" +
+                      std::to_string(config_.min_size) + " - " + e.what());
+      }
     }
   }
 }
@@ -36,6 +41,9 @@ std::shared_ptr<pqxx::connection> ConnectionPool::createConnection() {
     auto conn = std::make_shared<pqxx::connection>(config_.connection_string);
     return conn;
   } catch (const std::exception& e) {
+    if (auto logger = observability::Logger::getInstance()) {
+      logger->error("ConnectionPool: createConnection failed - " + std::string(e.what()));
+    }
     throw std::runtime_error("Failed to create database connection: " + 
                              std::string(e.what()));
   }
@@ -61,6 +69,12 @@ std::shared_ptr<pqxx::connection> ConnectionPool::acquire() {
   }
   
   // Pool exhausted
+  if (auto logger = observability::Logger::getInstance()) {
+    logger->error("ConnectionPool: pool exhausted (active=" +
+                  std::to_string(active_connections_) +
+                  ", idle=" + std::to_string(pool_.size()) +
+                  ", max=" + std::to_string(config_.max_size) + ")");
+  }
   throw std::runtime_error("Connection pool exhausted");
 }
 
@@ -92,6 +106,9 @@ bool ConnectionPool::healthCheck() {
     release(conn);
     return true;
   } catch (const std::exception&) {
+    if (auto logger = observability::Logger::getInstance()) {
+      logger->warn("ConnectionPool: health check failed");
+    }
     return false;
   }
 }
