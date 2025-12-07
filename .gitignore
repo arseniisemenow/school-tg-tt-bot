@@ -1,6 +1,7 @@
 # Build directories
 cmake-build-*/
 build/
+build-inspect/
 *.o
 *.a
 *.so

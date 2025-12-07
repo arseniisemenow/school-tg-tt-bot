@@ -5,6 +5,7 @@
 // This file contains all the method implementations as templates
 
 #include "bot/bot_base.h"
+#include "bot/webhook_server.h"
 #include "database/connection_pool.h"
 #include "database/transaction.h"
 #include "repositories/group_repository.h"
@@ -21,8 +22,13 @@
 #include <tgbotxx/objects/ReplyParameters.hpp>
 #include <tgbotxx/objects/ReactionType.hpp>
 #include <tgbotxx/objects/ChatMember.hpp>
+#include <tgbotxx/objects/ChatMemberUpdated.hpp>
+#include <tgbotxx/objects/MessageEntity.hpp>
+#include <tgbotxx/objects/Update.hpp>
+#include <tgbotxx/objects/Chat.hpp>
 #include <tgbotxx/Api.hpp>
 #include <pqxx/pqxx>
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <stdexcept>
 #include <sstream>
@@ -175,25 +181,365 @@ void BotBase<Derived>::startPolling() {
     return;
   }
   
-  // For production bot, this will call tgbotxx::Bot::start()
-  // For test bot, this is a no-op
+  mode_ = BotMode::Polling;
   running_ = true;
   // Note: ProductionBotApi (which inherits from tgbotxx::Bot) will handle start()
   // TestBot will just set running_ = true
 }
 
 template<typename Derived>
-void BotBase<Derived>::startWebhook(const std::string& /* webhook_url */, int /* port */) {
-  // TODO: Implement webhook support
+void BotBase<Derived>::startWebhook(const std::string& webhook_url, int port, const std::string& secret_token) {
+  if (running_) {
+    return;
+  }
+  
   if (!logger_) logger_ = observability::Logger::getInstance().get();
-  logger_->warn("Webhook not yet implemented");
+  
+  // Store webhook URL for later use
+  webhook_url_ = webhook_url;
+  
+  // Create and configure webhook server
+  webhook_server_ = std::make_unique<WebhookServer>();
+  
+  WebhookServer::Config server_config;
+  server_config.port = port;
+  server_config.secret_token = secret_token;
+  webhook_server_->configure(server_config);
+  
+  // Set callback to process incoming updates
+  webhook_server_->setUpdateCallback([this](const std::string& json_body) {
+    return processUpdate(json_body);
+  });
+  
+  // Start the webhook server
+  if (!webhook_server_->start()) {
+    logger_->error("Failed to start webhook server on port " + std::to_string(port));
+    throw std::runtime_error("Failed to start webhook server");
+  }
+  
+  logger_->info("Webhook server started on port " + std::to_string(port));
+  
+  // Register webhook with Telegram
+  // Note: The derived class (Bot) should call api()->setWebhook() 
+  // This is handled in Bot::startWebhook override
+  
+  mode_ = BotMode::Webhook;
+  running_ = true;
+  
+  logger_->info("Bot started in webhook mode, URL: " + webhook_url);
 }
 
 template<typename Derived>
 void BotBase<Derived>::stop() {
+  if (!running_) {
+    return;
+  }
+  
   running_ = false;
-  // ProductionBotApi (tgbotxx::Bot) will handle stop()
+  
+  // Stop webhook server if running
+  if (webhook_server_) {
+    webhook_server_->stop();
+    webhook_server_.reset();
+  }
+  
+  mode_ = BotMode::None;
+  
+  // ProductionBotApi (tgbotxx::Bot) will handle stop() for polling mode
   // TestBot just sets running_ = false
+}
+
+template<typename Derived>
+bool BotBase<Derived>::processUpdate(const std::string& json_body) {
+  if (!logger_) logger_ = observability::Logger::getInstance().get();
+  
+  try {
+    // Parse JSON string to nlohmann::json
+    nlohmann::json json = nlohmann::json::parse(json_body);
+    
+    // Process the update directly from JSON
+    // This avoids needing to link against tgbotxx::Update::fromJson
+    processJsonUpdate(json);
+    
+    return true;
+  } catch (const nlohmann::json::parse_error& e) {
+    logger_->error("Failed to parse webhook JSON: " + std::string(e.what()));
+    return false;
+  } catch (const std::exception& e) {
+    logger_->error("Error processing webhook update: " + std::string(e.what()));
+    return false;
+  }
+}
+
+// Helper function to create a Message from JSON
+template<typename Derived>
+tgbotxx::Ptr<tgbotxx::Message> BotBase<Derived>::parseMessageFromJson(const nlohmann::json& json) {
+  auto message = tgbotxx::Ptr<tgbotxx::Message>(new tgbotxx::Message());
+  
+  if (json.contains("message_id")) {
+    message->messageId = json["message_id"].get<int>();
+  }
+  if (json.contains("date")) {
+    message->date = json["date"].get<int64_t>();
+  }
+  if (json.contains("text")) {
+    message->text = json["text"].get<std::string>();
+  }
+  if (json.contains("message_thread_id")) {
+    message->messageThreadId = json["message_thread_id"].get<int>();
+  }
+  
+  // Parse chat
+  if (json.contains("chat")) {
+    message->chat = tgbotxx::Ptr<tgbotxx::Chat>(new tgbotxx::Chat());
+    const auto& chat_json = json["chat"];
+    if (chat_json.contains("id")) {
+      message->chat->id = chat_json["id"].get<int64_t>();
+    }
+    if (chat_json.contains("type")) {
+      std::string type_str = chat_json["type"].get<std::string>();
+      auto chat_type = tgbotxx::Chat::StringToType(type_str);
+      if (chat_type) {
+        message->chat->type = *chat_type;
+      }
+    }
+    if (chat_json.contains("title")) {
+      message->chat->title = chat_json["title"].get<std::string>();
+    }
+  }
+  
+  // Parse from (User)
+  if (json.contains("from")) {
+    message->from = tgbotxx::Ptr<tgbotxx::User>(new tgbotxx::User());
+    const auto& from_json = json["from"];
+    if (from_json.contains("id")) {
+      message->from->id = from_json["id"].get<int64_t>();
+    }
+    if (from_json.contains("is_bot")) {
+      message->from->isBot = from_json["is_bot"].get<bool>();
+    }
+    if (from_json.contains("first_name")) {
+      message->from->firstName = from_json["first_name"].get<std::string>();
+    }
+    if (from_json.contains("username")) {
+      message->from->username = from_json["username"].get<std::string>();
+    }
+  }
+  
+  // Parse entities (for mentions)
+  if (json.contains("entities")) {
+    for (const auto& entity_json : json["entities"]) {
+      auto entity = tgbotxx::Ptr<tgbotxx::MessageEntity>(new tgbotxx::MessageEntity());
+      if (entity_json.contains("type")) {
+        std::string type_str = entity_json["type"].get<std::string>();
+        auto entity_type = tgbotxx::MessageEntity::StringToType(type_str);
+        if (entity_type) {
+          entity->type = *entity_type;
+        }
+      }
+      if (entity_json.contains("offset")) {
+        entity->offset = entity_json["offset"].get<int>();
+      }
+      if (entity_json.contains("length")) {
+        entity->length = entity_json["length"].get<int>();
+      }
+      if (entity_json.contains("user")) {
+        entity->user = tgbotxx::Ptr<tgbotxx::User>(new tgbotxx::User());
+        const auto& user_json = entity_json["user"];
+        if (user_json.contains("id")) {
+          entity->user->id = user_json["id"].get<int64_t>();
+        }
+        if (user_json.contains("username")) {
+          entity->user->username = user_json["username"].get<std::string>();
+        }
+      }
+      message->entities.push_back(entity);
+    }
+  }
+  
+  return message;
+}
+
+// Helper function to create ChatMemberUpdated from JSON
+template<typename Derived>
+tgbotxx::Ptr<tgbotxx::ChatMemberUpdated> BotBase<Derived>::parseChatMemberUpdatedFromJson(const nlohmann::json& json) {
+  auto update = tgbotxx::Ptr<tgbotxx::ChatMemberUpdated>(new tgbotxx::ChatMemberUpdated());
+  
+  if (json.contains("date")) {
+    update->date = json["date"].get<int64_t>();
+  }
+  
+  // Parse chat
+  if (json.contains("chat")) {
+    update->chat = tgbotxx::Ptr<tgbotxx::Chat>(new tgbotxx::Chat());
+    const auto& chat_json = json["chat"];
+    if (chat_json.contains("id")) {
+      update->chat->id = chat_json["id"].get<int64_t>();
+    }
+    if (chat_json.contains("type")) {
+      std::string type_str = chat_json["type"].get<std::string>();
+      auto chat_type = tgbotxx::Chat::StringToType(type_str);
+      if (chat_type) {
+        update->chat->type = *chat_type;
+      }
+    }
+    if (chat_json.contains("title")) {
+      update->chat->title = chat_json["title"].get<std::string>();
+    }
+  }
+  
+  // Parse from (User who performed the action)
+  if (json.contains("from")) {
+    update->from = tgbotxx::Ptr<tgbotxx::User>(new tgbotxx::User());
+    const auto& from_json = json["from"];
+    if (from_json.contains("id")) {
+      update->from->id = from_json["id"].get<int64_t>();
+    }
+    if (from_json.contains("is_bot")) {
+      update->from->isBot = from_json["is_bot"].get<bool>();
+    }
+    if (from_json.contains("first_name")) {
+      update->from->firstName = from_json["first_name"].get<std::string>();
+    }
+    if (from_json.contains("username")) {
+      update->from->username = from_json["username"].get<std::string>();
+    }
+  }
+  
+  // Parse new_chat_member
+  if (json.contains("new_chat_member")) {
+    update->newChatMember = tgbotxx::Ptr<tgbotxx::ChatMember>(new tgbotxx::ChatMember());
+    const auto& member_json = json["new_chat_member"];
+    if (member_json.contains("status")) {
+      update->newChatMember->status = member_json["status"].get<std::string>();
+    }
+    if (member_json.contains("user")) {
+      update->newChatMember->user = tgbotxx::Ptr<tgbotxx::User>(new tgbotxx::User());
+      const auto& user_json = member_json["user"];
+      if (user_json.contains("id")) {
+        update->newChatMember->user->id = user_json["id"].get<int64_t>();
+      }
+      if (user_json.contains("is_bot")) {
+        update->newChatMember->user->isBot = user_json["is_bot"].get<bool>();
+      }
+    }
+  }
+  
+  // Parse old_chat_member
+  if (json.contains("old_chat_member")) {
+    update->oldChatMember = tgbotxx::Ptr<tgbotxx::ChatMember>(new tgbotxx::ChatMember());
+    const auto& member_json = json["old_chat_member"];
+    if (member_json.contains("status")) {
+      update->oldChatMember->status = member_json["status"].get<std::string>();
+    }
+    if (member_json.contains("user")) {
+      update->oldChatMember->user = tgbotxx::Ptr<tgbotxx::User>(new tgbotxx::User());
+      const auto& user_json = member_json["user"];
+      if (user_json.contains("id")) {
+        update->oldChatMember->user->id = user_json["id"].get<int64_t>();
+      }
+      if (user_json.contains("is_bot")) {
+        update->oldChatMember->user->isBot = user_json["is_bot"].get<bool>();
+      }
+    }
+  }
+  
+  return update;
+}
+
+// Process JSON update directly without using tgbotxx::Update::fromJson
+template<typename Derived>
+void BotBase<Derived>::processJsonUpdate(const nlohmann::json& json) {
+  if (!logger_) logger_ = observability::Logger::getInstance().get();
+  
+  try {
+    int32_t update_id = json.value("update_id", 0);
+    
+    // Route update to appropriate handler based on update type
+    if (json.contains("message")) {
+      auto message = parseMessageFromJson(json["message"]);
+      
+      // Check if it's a command (text starts with /)
+      if (!message->text.empty() && message->text.front() == '/') {
+        onCommand(message);
+      }
+      // Always call onAnyMessage for all messages
+      onAnyMessage(message);
+    }
+    else if (json.contains("edited_message")) {
+      logger_->debug("Received edited message, update_id=" + std::to_string(update_id));
+    }
+    else if (json.contains("channel_post")) {
+      logger_->debug("Received channel post, update_id=" + std::to_string(update_id));
+    }
+    else if (json.contains("edited_channel_post")) {
+      logger_->debug("Received edited channel post, update_id=" + std::to_string(update_id));
+    }
+    else if (json.contains("my_chat_member")) {
+      auto chat_member_update = parseChatMemberUpdatedFromJson(json["my_chat_member"]);
+      onChatMemberUpdated(chat_member_update);
+    }
+    else if (json.contains("chat_member")) {
+      auto chat_member_update = parseChatMemberUpdatedFromJson(json["chat_member"]);
+      onChatMemberUpdated(chat_member_update);
+    }
+    else if (json.contains("callback_query")) {
+      logger_->debug("Received callback query, update_id=" + std::to_string(update_id));
+    }
+    else {
+      logger_->debug("Received unhandled update type, update_id=" + std::to_string(update_id));
+    }
+  } catch (const std::exception& e) {
+    logger_->error("Error in processJsonUpdate: " + std::string(e.what()));
+  }
+}
+
+template<typename Derived>
+void BotBase<Derived>::processUpdate(const tgbotxx::Update& update) {
+  if (!logger_) logger_ = observability::Logger::getInstance().get();
+  
+  try {
+    // Route update to appropriate handler based on update type
+    // This mirrors how tgbotxx::Bot internally routes updates
+    
+    if (update.message) {
+      // Check if it's a command (text starts with /)
+      if (!update.message->text.empty() && update.message->text.front() == '/') {
+        onCommand(update.message);
+      }
+      // Always call onAnyMessage for all messages
+      onAnyMessage(update.message);
+    }
+    else if (update.editedMessage) {
+      // Could add onEditedMessage handler if needed
+      logger_->debug("Received edited message, update_id=" + std::to_string(update.updateId));
+    }
+    else if (update.channelPost) {
+      // Could add onChannelPost handler if needed
+      logger_->debug("Received channel post, update_id=" + std::to_string(update.updateId));
+    }
+    else if (update.editedChannelPost) {
+      // Could add onEditedChannelPost handler if needed
+      logger_->debug("Received edited channel post, update_id=" + std::to_string(update.updateId));
+    }
+    else if (update.myChatMember) {
+      // Bot's chat member status was updated
+      onChatMemberUpdated(update.myChatMember);
+    }
+    else if (update.chatMember) {
+      // A chat member's status was updated
+      onChatMemberUpdated(update.chatMember);
+    }
+    else if (update.callbackQuery) {
+      // Could add onCallbackQuery handler if needed
+      logger_->debug("Received callback query, update_id=" + std::to_string(update.updateId));
+    }
+    else {
+      logger_->debug("Received unhandled update type, update_id=" + std::to_string(update.updateId));
+    }
+  } catch (const std::exception& e) {
+    logger_->error("Error in processUpdate: " + std::string(e.what()));
+  }
 }
 
 template<typename Derived>

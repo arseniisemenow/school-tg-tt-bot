@@ -33,20 +33,35 @@ std::string ApiClient::getAccessToken() {
   std::lock_guard<std::mutex> lock(token_mutex_);
   
   if (isTokenValid()) {
+    if (auto logger = observability::Logger::getInstance()) {
+      logger->debug("School21: reusing cached access token");
+    }
     return token_->access_token;
   }
   
   // Need to authenticate or refresh
   if (token_ && token_->refresh_token.empty() == false) {
     try {
+      if (auto logger = observability::Logger::getInstance()) {
+        logger->info("School21: attempting token refresh");
+      }
       *token_ = refreshToken(token_->refresh_token);
       return token_->access_token;
     } catch (const std::exception&) {
       // Refresh failed, re-authenticate
+      if (auto logger = observability::Logger::getInstance()) {
+        logger->warn("School21: token refresh failed, re-authenticating");
+      }
     }
   }
   
+  if (auto logger = observability::Logger::getInstance()) {
+    logger->info("School21: authenticating for new token");
+  }
   token_ = authenticate();
+  if (auto logger = observability::Logger::getInstance()) {
+    logger->info("School21: authentication succeeded, token acquired");
+  }
   return token_->access_token;
 }
 
@@ -87,6 +102,10 @@ std::optional<Participant> ApiClient::getParticipant(const std::string& login) {
     std::string token = getAccessToken();
     std::string url = config_.base_url + "/v1/participants/" + login;
     
+    if (auto logger = observability::Logger::getInstance()) {
+      logger->debug("School21: fetching participant '" + login + "' from " + url);
+    }
+
     std::string response = httpGet(url, token);
     
     auto json = nlohmann::json::parse(response);
@@ -138,6 +157,9 @@ std::string ApiClient::httpGet(const std::string& url,
                                const std::string& token) {
   CURL* curl = curl_easy_init();
   if (!curl) {
+    if (auto logger = observability::Logger::getInstance()) {
+      logger->error("School21 httpGet: failed to initialize CURL");
+    }
     throw std::runtime_error("Failed to initialize CURL");
   }
   
@@ -161,6 +183,10 @@ std::string ApiClient::httpGet(const std::string& url,
   curl_easy_cleanup(curl);
   
   if (res != CURLE_OK) {
+    if (auto logger = observability::Logger::getInstance()) {
+      logger->error(std::string("School21 httpGet failed: ") +
+                    curl_easy_strerror(res) + " url=" + url);
+    }
     throw std::runtime_error("HTTP GET failed: " + 
                             std::string(curl_easy_strerror(res)));
   }
@@ -173,6 +199,9 @@ std::string ApiClient::httpPost(const std::string& url,
                                 const std::string& token) {
   CURL* curl = curl_easy_init();
   if (!curl) {
+    if (auto logger = observability::Logger::getInstance()) {
+      logger->error("School21 httpPost: failed to initialize CURL");
+    }
     throw std::runtime_error("Failed to initialize CURL");
   }
   
@@ -197,6 +226,10 @@ std::string ApiClient::httpPost(const std::string& url,
   curl_easy_cleanup(curl);
   
   if (res != CURLE_OK) {
+    if (auto logger = observability::Logger::getInstance()) {
+      logger->error(std::string("School21 httpPost failed: ") +
+                    curl_easy_strerror(res) + " url=" + url);
+    }
     throw std::runtime_error("HTTP POST failed: " + 
                             std::string(curl_easy_strerror(res)));
   }

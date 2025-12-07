@@ -5,6 +5,7 @@
 #include <tgbotxx/Api.hpp>
 #include <tgbotxx/objects/ChatMember.hpp>
 #include <tgbotxx/objects/User.hpp>
+#include <tgbotxx/objects/WebhookInfo.hpp>
 #include <memory>
 #include <map>
 
@@ -46,6 +47,20 @@ class TestBotApi : public BotApi {
       int64_t chat_id,
       int64_t user_id) override;
   
+  // Webhook methods (mock implementations for testing)
+  bool setWebhook(
+      const std::string& url,
+      const std::optional<cpr::File>& certificate = std::nullopt,
+      const std::string& ip_address = "",
+      int max_connections = 40,
+      const std::vector<std::string>& allowed_updates = {},
+      bool drop_pending_updates = false,
+      const std::string& secret_token = "") override;
+  
+  bool deleteWebhook(bool drop_pending_updates = false) override;
+  
+  tgbotxx::Ptr<tgbotxx::WebhookInfo> getWebhookInfo() override;
+  
   // Test helpers - allow tests to inspect sent messages
   struct SentMessage {
     int64_t chat_id;
@@ -61,6 +76,11 @@ class TestBotApi : public BotApi {
   void setMockChatMemberStatus(int64_t chat_id, int64_t user_id, const std::string& status);
   void clearMockChatMembers() { chat_members_.clear(); }
   
+  // Webhook test helpers
+  std::string getWebhookUrl() const { return webhook_url_; }
+  std::string getWebhookSecretToken() const { return webhook_secret_token_; }
+  bool isWebhookSet() const { return !webhook_url_.empty(); }
+  
  private:
   // Mock API that doesn't make real calls
   std::unique_ptr<tgbotxx::Api> mock_api_;
@@ -69,6 +89,10 @@ class TestBotApi : public BotApi {
   
   // Keyed by chat_id -> user_id -> status
   std::map<int64_t, std::map<int64_t, std::string>> chat_members_;
+  
+  // Webhook state for testing
+  std::string webhook_url_;
+  std::string webhook_secret_token_;
 };
 
 }  // namespace bot

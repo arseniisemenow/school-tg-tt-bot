@@ -200,18 +200,46 @@ void Bot::startPolling() {
   }
 }
 
-void Bot::startWebhook(const std::string& webhook_url, int port) {
+void Bot::startWebhook(const std::string& webhook_url, int port, const std::string& secret_token) {
   if (running_) {
     return;
   }
   
-  running_ = true;
   try {
-    // TODO: Set webhook and start webhook server
-    // tgbotxx may have setWebhook method, check API
-    // For now, this is a placeholder
-    (void)webhook_url;
-    (void)port;
+    // First, delete any existing webhook to avoid conflicts
+    deleteWebhook(true);
+    
+    // Start the webhook server (from BotBase)
+    BotBase<Bot>::startWebhook(webhook_url, port, secret_token);
+    
+    // Register webhook with Telegram
+    std::vector<std::string> allowed_updates = {
+        "message",
+        "edited_message",
+        "channel_post",
+        "edited_channel_post",
+        "my_chat_member",
+        "chat_member"
+    };
+    
+    bool success = setWebhook(
+        webhook_url,
+        std::nullopt,  // certificate
+        "",            // ip_address
+        40,            // max_connections
+        allowed_updates,
+        false,         // drop_pending_updates
+        secret_token
+    );
+    
+    if (!success) {
+      // Clean up and throw
+      BotBase<Bot>::stop();
+      throw std::runtime_error("Failed to register webhook with Telegram");
+    }
+    
+    logger_->info("Webhook registered with Telegram: " + webhook_url);
+    
   } catch (const std::exception& e) {
     running_ = false;
     throw std::runtime_error("Failed to start webhook: " + 
@@ -224,8 +252,23 @@ void Bot::stop() {
     return;
   }
   
-  running_ = false;
-  tgbotxx::Bot::stop();  // Call parent stop method
+  // If in webhook mode, delete the webhook from Telegram
+  if (mode_ == BotMode::Webhook) {
+    try {
+      deleteWebhook(false);
+      logger_->info("Webhook deleted from Telegram");
+    } catch (const std::exception& e) {
+      logger_->warn("Failed to delete webhook: " + std::string(e.what()));
+    }
+  }
+  
+  // Call BotBase::stop() which handles webhook server cleanup
+  BotBase<Bot>::stop();
+  
+  // For polling mode, also stop tgbotxx::Bot
+  if (mode_ == BotMode::Polling) {
+    tgbotxx::Bot::stop();
+  }
 }
 
 // ============================================================================

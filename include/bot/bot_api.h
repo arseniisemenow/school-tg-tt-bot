@@ -6,10 +6,12 @@
 #include <tgbotxx/objects/MessageEntity.hpp>
 #include <tgbotxx/objects/ReactionType.hpp>
 #include <tgbotxx/objects/ChatMember.hpp>
+#include <tgbotxx/objects/WebhookInfo.hpp>
 #include <tgbotxx/Api.hpp>
 #include <tgbotxx/objects/IReplyMarkup.hpp>
 #include <tgbotxx/objects/LinkPreviewOptions.hpp>
 #include <tgbotxx/objects/SuggestedPostParameters.hpp>
+#include <cpr/cpr.h>
 #include <string>
 #include <vector>
 #include <optional>
@@ -54,6 +56,24 @@ class BotApi {
   virtual tgbotxx::Ptr<tgbotxx::ChatMember> getChatMember(
       int64_t chat_id,
       int64_t user_id) = 0;
+  
+  // Set webhook for receiving updates
+  // Returns true on success
+  virtual bool setWebhook(
+      const std::string& url,
+      const std::optional<cpr::File>& certificate = std::nullopt,
+      const std::string& ip_address = "",
+      int max_connections = 40,
+      const std::vector<std::string>& allowed_updates = {},
+      bool drop_pending_updates = false,
+      const std::string& secret_token = "") = 0;
+  
+  // Delete webhook to switch back to polling
+  // Returns true on success
+  virtual bool deleteWebhook(bool drop_pending_updates = false) = 0;
+  
+  // Get current webhook status
+  virtual tgbotxx::Ptr<tgbotxx::WebhookInfo> getWebhookInfo() = 0;
 };
 
 }  // namespace bot

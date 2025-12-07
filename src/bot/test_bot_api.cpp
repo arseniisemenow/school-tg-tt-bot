@@ -3,6 +3,7 @@
 #include <tgbotxx/objects/Chat.hpp>
 #include <tgbotxx/objects/User.hpp>
 #include <tgbotxx/objects/ChatMember.hpp>
+#include <tgbotxx/objects/WebhookInfo.hpp>
 
 namespace bot {
 
@@ -89,6 +90,35 @@ void TestBotApi::setMockChatMemberStatus(int64_t chat_id,
                                          int64_t user_id,
                                          const std::string& status) {
   chat_members_[chat_id][user_id] = status;
+}
+
+bool TestBotApi::setWebhook(
+    const std::string& url,
+    const std::optional<cpr::File>& /* certificate */,
+    const std::string& /* ip_address */,
+    int /* max_connections */,
+    const std::vector<std::string>& /* allowed_updates */,
+    bool /* drop_pending_updates */,
+    const std::string& secret_token) {
+  // Mock implementation - store webhook configuration
+  webhook_url_ = url;
+  webhook_secret_token_ = secret_token;
+  return true;  // Always succeeds in tests
+}
+
+bool TestBotApi::deleteWebhook(bool /* drop_pending_updates */) {
+  // Mock implementation - clear webhook configuration
+  webhook_url_.clear();
+  webhook_secret_token_.clear();
+  return true;  // Always succeeds in tests
+}
+
+tgbotxx::Ptr<tgbotxx::WebhookInfo> TestBotApi::getWebhookInfo() {
+  auto info = tgbotxx::Ptr<tgbotxx::WebhookInfo>(new tgbotxx::WebhookInfo());
+  info->url = webhook_url_;
+  info->hasCustomCertificate = false;
+  info->pendingUpdateCount = 0;
+  return info;
 }
 
 }  // namespace bot

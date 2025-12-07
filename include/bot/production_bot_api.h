@@ -41,6 +41,20 @@ class ProductionBotApi : public BotApi, public tgbotxx::Bot {
   tgbotxx::Ptr<tgbotxx::ChatMember> getChatMember(
       int64_t chat_id,
       int64_t user_id) override;
+  
+  // Webhook methods
+  bool setWebhook(
+      const std::string& url,
+      const std::optional<cpr::File>& certificate = std::nullopt,
+      const std::string& ip_address = "",
+      int max_connections = 40,
+      const std::vector<std::string>& allowed_updates = {},
+      bool drop_pending_updates = false,
+      const std::string& secret_token = "") override;
+  
+  bool deleteWebhook(bool drop_pending_updates = false) override;
+  
+  tgbotxx::Ptr<tgbotxx::WebhookInfo> getWebhookInfo() override;
 };
 
 }  // namespace bot

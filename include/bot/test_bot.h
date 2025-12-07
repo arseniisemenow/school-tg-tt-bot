@@ -26,10 +26,23 @@ class TestBot : public BotBase<TestBot>, public TestBotApi {
       std::unique_ptr<repositories::PlayerRepository> player_repo,
       std::unique_ptr<repositories::MatchRepository> match_repo,
       std::unique_ptr<school21::ApiClient> school21_client);
+  
+  // Expose processUpdate for testing (from BotBase)
+  using BotBase<TestBot>::processUpdate;
+  
+  // Expose webhook server start for testing
+  using BotBase<TestBot>::startWebhook;
+  
+  // Forward getSentMessages to TestBotApi
+  using TestBotApi::getSentMessages;
+  using TestBotApi::clearSentMessages;
 };
 
 }  // namespace bot
 
 #endif  // BOT_TEST_BOT_H
+
+
+
 
 

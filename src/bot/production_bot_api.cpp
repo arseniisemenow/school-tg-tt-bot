@@ -2,6 +2,7 @@
 #include <tgbotxx/objects/ReplyParameters.hpp>
 #include <tgbotxx/objects/ReactionType.hpp>
 #include <tgbotxx/objects/ChatMember.hpp>
+#include <tgbotxx/objects/WebhookInfo.hpp>
 
 namespace bot {
 
@@ -62,6 +63,34 @@ tgbotxx::Ptr<tgbotxx::ChatMember> ProductionBotApi::getChatMember(
     int64_t chat_id,
     int64_t user_id) {
   return api()->getChatMember(chat_id, user_id);
+}
+
+bool ProductionBotApi::setWebhook(
+    const std::string& url,
+    const std::optional<cpr::File>& certificate,
+    const std::string& ip_address,
+    int max_connections,
+    const std::vector<std::string>& allowed_updates,
+    bool drop_pending_updates,
+    const std::string& secret_token) {
+  
+  return api()->setWebhook(
+      url,
+      certificate,
+      ip_address,
+      max_connections,
+      allowed_updates,
+      drop_pending_updates,
+      secret_token
+  );
+}
+
+bool ProductionBotApi::deleteWebhook(bool drop_pending_updates) {
+  return api()->deleteWebhook(drop_pending_updates);
+}
+
+tgbotxx::Ptr<tgbotxx::WebhookInfo> ProductionBotApi::getWebhookInfo() {
+  return api()->getWebhookInfo();
 }
 
 }  // namespace bot

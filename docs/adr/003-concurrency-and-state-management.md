@@ -169,3 +169,6 @@ We will implement a stateless bot design with the following concurrency and stat
 - **Approach**: Use SERIALIZABLE isolation level
 - **Rejected**: Higher contention, more rollbacks, worse performance than optimistic locking
 
+
+
+

@@ -2,6 +2,7 @@
 #define BOT_BOT_BASE_H
 
 #include "bot_api.h"
+#include "bot/webhook_server.h"
 #include <memory>
 #include <string>
 #include <atomic>
@@ -16,6 +17,8 @@
 #include <tgbotxx/objects/ChatMemberUpdated.hpp>
 #include <tgbotxx/objects/User.hpp>
 #include <tgbotxx/objects/Chat.hpp>
+#include <tgbotxx/objects/Update.hpp>
+#include <nlohmann/json.hpp>
 
 // Forward declarations
 namespace database {
@@ -75,10 +78,33 @@ class BotBase {
   void startPolling();
   
   // Start webhook server (for production bot)
-  void startWebhook(const std::string& webhook_url, int port);
+  // webhook_url: Full URL that Telegram will use to send updates (e.g., https://example.com/webhook)
+  // port: Local port to listen on
+  // secret_token: Optional secret token for validating webhook requests
+  void startWebhook(const std::string& webhook_url, int port, const std::string& secret_token = "");
   
-  // Stop bot
+  // Stop bot (both polling and webhook modes)
   void stop();
+  
+  // Process a single update from webhook JSON
+  // This is the core method that parses JSON and routes to appropriate handlers
+  // Returns true if update was processed successfully
+  bool processUpdate(const std::string& json_body);
+  
+  // Process a parsed Update object
+  void processUpdate(const tgbotxx::Update& update);
+  
+ private:
+  // Process JSON update directly (avoids link issues with tgbotxx::Update::fromJson)
+  void processJsonUpdate(const nlohmann::json& json);
+  
+  // Helper to parse Message from JSON
+  tgbotxx::Ptr<tgbotxx::Message> parseMessageFromJson(const nlohmann::json& json);
+  
+  // Helper to parse ChatMemberUpdated from JSON
+  tgbotxx::Ptr<tgbotxx::ChatMemberUpdated> parseChatMemberUpdatedFromJson(const nlohmann::json& json);
+  
+ public:
   
   // Public methods for testing - allow tests to call protected methods
   void onCommand(const tgbotxx::Ptr<tgbotxx::Message>& command);
@@ -105,6 +131,14 @@ class BotBase {
   // Protected so derived classes can initialize
   bool running_ = false;
   
+  // Bot mode (polling vs webhook)
+  enum class BotMode { None, Polling, Webhook };
+  BotMode mode_ = BotMode::None;
+  
+  // Webhook server for receiving Telegram updates
+  std::unique_ptr<WebhookServer> webhook_server_;
+  std::string webhook_url_;
+  
   // Dependencies
   std::shared_ptr<database::ConnectionPool> db_pool_;
   std::unique_ptr<repositories::GroupRepository> group_repo_;
@@ -112,7 +146,7 @@ class BotBase {
   std::unique_ptr<repositories::MatchRepository> match_repo_;
   std::unique_ptr<school21::ApiClient> school21_client_;
   std::unique_ptr<utils::EloCalculator> elo_calculator_;
-  observability::Logger* logger_;
+  observability::Logger* logger_ = nullptr;
 
  private:
   
