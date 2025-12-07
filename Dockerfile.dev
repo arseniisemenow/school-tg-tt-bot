@@ -20,7 +20,8 @@ RUN apt-get update && \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Default command: build the project
-# This will be overridden when running the container
-CMD ["bash", "-c", "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel $(nproc)"]
+# Default command: start interactive bash
+# User enters container and runs ./scripts/build.sh manually
+# Build artifacts are output to mounted ./build directory on host
+CMD ["bash"]
 

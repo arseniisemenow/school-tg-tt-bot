@@ -51,7 +51,7 @@ if [ -f "$BINARY_PATH" ]; then
     ls -lh "$BINARY_PATH"
     echo ""
     echo "Build artifacts are ready for packaging."
-    echo "Next: ./scripts/package-runtime.sh [tag]"
+echo "Next: ./scripts/package-runtime.sh [tag]"
     echo "Then deploy: ./scripts/deploy-dev.sh"
 else
     echo "WARNING: Binary not found at expected location: $BINARY_PATH"

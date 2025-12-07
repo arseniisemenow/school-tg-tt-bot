@@ -1,41 +1,29 @@
-# Deployment Dockerfile - Runtime only
+# Deployment Dockerfile - Runtime only (no app artifacts baked in)
 # Usage: docker build -t image-deploy:1.0.0 -f Dockerfile.deploy .
-# Requires pre-built binary in ./build/school_tg_tt_bot on host
-# This Dockerfile copies the binary and config files, no build step
+# Binaries/config/migrations must be provided at runtime (e.g., bind mounts).
 
 FROM ubuntu:22.04
 
-# Install runtime dependencies only
 RUN apt-get update && \
     apt-get install -y \
-    libpq5 \
-    libpqxx-6.4 \
-    libcurl4 \
-    ca-certificates \
-    procps \
+      libpq5 \
+      libpqxx-6.4 \
+      libcurl4 \
+      ca-certificates \
+      procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
     mkdir -p /app/config /app/migrations && \
     chown -R appuser:appuser /app
 
-# Copy pre-built binary from host ./build directory (already built outside)
-COPY --chown=appuser:appuser build/school_tg_tt_bot /usr/local/bin/school_tg_tt_bot
-
-# Copy config and migrations
-COPY --chown=appuser:appuser config/ /app/config/
-COPY --chown=appuser:appuser migrations/ /app/migrations/
-
-# Switch to non-root user
 USER appuser
-
 WORKDIR /app
 
 # Health check - check if the bot process is running
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD pgrep -f school_tg_tt_bot > /dev/null || exit 1
 
-# Run the application
+# Run the application (binary is expected to be mounted at runtime)
 ENTRYPOINT ["/usr/local/bin/school_tg_tt_bot"]
 

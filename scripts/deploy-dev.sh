@@ -10,6 +10,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 STACK_NAME="school-tg-bot"
 STACK_FILE="$PROJECT_ROOT/docker-stack.dev.yml"
 DEPLOY_IMAGE_TAG="${DEPLOY_IMAGE_TAG:-image-deploy:1.0.0}"
+HOST_PROJECT_ROOT="${HOST_PROJECT_ROOT:-$PROJECT_ROOT}"
 
 echo "=== Deploying School TG Bot to Docker Swarm (Dev) ==="
 echo ""
@@ -198,10 +199,13 @@ fi
 echo "✓ Build artifacts found: $BUILD_BINARY"
 echo ""
 
-# Package runtime image (no compilation)
-echo "Packaging runtime image: $DEPLOY_IMAGE_TAG"
-"$PROJECT_ROOT/scripts/package-runtime.sh" "$DEPLOY_IMAGE_TAG"
-echo ""
+# Ensure deploy image (artifact-free) exists
+if ! docker image inspect "$DEPLOY_IMAGE_TAG" &> /dev/null; then
+    echo "Deploy image not found: $DEPLOY_IMAGE_TAG"
+    echo "Building deploy image (no artifacts)..."
+    "$PROJECT_ROOT/scripts/build-images.sh" "image-build:1.0.0" "$DEPLOY_IMAGE_TAG"
+    echo ""
+fi
 
 # Load environment variables from .env file if it exists
 if [ -f "$PROJECT_ROOT/.env" ]; then
@@ -214,6 +218,8 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
 fi
 
 # Deploy the stack with webhook environment variables
+export HOST_PROJECT_ROOT
+
 echo "Deploying stack: $STACK_NAME"
 if [ -n "$WEBHOOK_DOMAIN" ]; then
     echo "  Using WEBHOOK_DOMAIN: $WEBHOOK_DOMAIN"

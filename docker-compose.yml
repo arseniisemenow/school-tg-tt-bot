@@ -58,6 +58,10 @@ services:
     networks:
       - bot-network
     restart: unless-stopped
+    volumes:
+      - ${HOST_PROJECT_ROOT:-.}/build/school_tg_tt_bot:/usr/local/bin/school_tg_tt_bot:ro
+      - ${HOST_PROJECT_ROOT:-.}/config:/app/config:ro
+      - ${HOST_PROJECT_ROOT:-.}/migrations:/app/migrations:ro
 
   # Optional: OpenTelemetry Collector for observability
   otel-collector:
