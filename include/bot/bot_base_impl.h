@@ -201,8 +201,24 @@ void BotBase<Derived>::startWebhook(const std::string& webhook_url, int port, co
   // Create and configure webhook server
   webhook_server_ = std::make_unique<WebhookServer>();
   
+  // Extract path from webhook URL (e.g., https://example.com/webhook -> /webhook)
+  std::string webhook_path = "/webhook";  // Default path
+  size_t path_start = webhook_url.find("://");
+  if (path_start != std::string::npos) {
+    path_start = webhook_url.find('/', path_start + 3);
+    if (path_start != std::string::npos) {
+      size_t query_start = webhook_url.find('?', path_start);
+      if (query_start != std::string::npos) {
+        webhook_path = webhook_url.substr(path_start, query_start - path_start);
+      } else {
+        webhook_path = webhook_url.substr(path_start);
+      }
+    }
+  }
+  
   WebhookServer::Config server_config;
   server_config.port = port;
+  server_config.path = webhook_path;
   server_config.secret_token = secret_token;
   webhook_server_->configure(server_config);
   

@@ -12,16 +12,6 @@ echo ""
 
 cd "$PROJECT_ROOT"
 
-# Check if Conan dependencies are installed
-if [ ! -f build/conan_toolchain.cmake ]; then
-    echo "ERROR: Conan dependencies not installed."
-    echo "Please run ./scripts/setup-env.sh first"
-    exit 1
-fi
-
-echo "✓ Conan toolchain found"
-echo ""
-
 # Check if CMake is available
 if ! command -v cmake &> /dev/null; then
     echo "ERROR: CMake is not installed. Please ensure you're in the bot container."
@@ -33,9 +23,7 @@ echo ""
 
 # Configure CMake
 echo "Configuring CMake..."
-cmake -S . -B build \
-    -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake \
-    -DCMAKE_BUILD_TYPE=Debug
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 
 if [ $? -ne 0 ]; then
     echo "ERROR: CMake configuration failed"
@@ -48,9 +36,10 @@ echo ""
 # Build the application
 echo "Building application..."
 echo "This may take a few minutes..."
+echo "Using $(nproc) parallel jobs for faster builds"
 echo ""
 
-cmake --build build -- -j
+cmake --build build --parallel $(nproc)
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Build failed"
@@ -77,4 +66,3 @@ else
 fi
 
 echo ""
-

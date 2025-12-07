@@ -28,6 +28,7 @@ class WebhookServer {
   struct Config {
     int port = 8080;                          // Port to listen on
     std::string bind_address = "0.0.0.0";     // Address to bind to
+    std::string path = "/webhook";            // Expected webhook path (e.g., "/webhook")
     std::string secret_token;                  // Secret token for validation (X-Telegram-Bot-Api-Secret-Token)
     int backlog = 10;                          // Connection queue size
     int max_body_size = 1024 * 1024;           // Maximum request body size (1MB)

@@ -161,6 +161,35 @@ void WebhookServer::handleClient(int client_socket) {
     return;
   }
   
+  // Validate path matches configured webhook path
+  std::string expected_path;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    expected_path = config_.path;
+  }
+  
+  // Normalize paths: remove trailing slashes and ensure leading slash
+  std::string request_path = request.path;
+  if (!request_path.empty() && request_path.back() == '/') {
+    request_path.pop_back();
+  }
+  if (!request_path.empty() && request_path.front() != '/') {
+    request_path = "/" + request_path;
+  }
+  
+  std::string normalized_expected = expected_path;
+  if (!normalized_expected.empty() && normalized_expected.back() == '/') {
+    normalized_expected.pop_back();
+  }
+  if (!normalized_expected.empty() && normalized_expected.front() != '/') {
+    normalized_expected = "/" + normalized_expected;
+  }
+  
+  if (request_path != normalized_expected) {
+    sendResponse(client_socket, 404, "Not Found");
+    return;
+  }
+  
   // Verify content type is JSON
   if (request.content_type.find("application/json") == std::string::npos) {
     sendResponse(client_socket, 415, "Unsupported Media Type");
@@ -332,6 +361,7 @@ void WebhookServer::sendResponse(int client_socket, int status_code, const std::
     case 200: status_text = "OK"; break;
     case 400: status_text = "Bad Request"; break;
     case 403: status_text = "Forbidden"; break;
+    case 404: status_text = "Not Found"; break;
     case 405: status_text = "Method Not Allowed"; break;
     case 415: status_text = "Unsupported Media Type"; break;
     case 500: status_text = "Internal Server Error"; break;

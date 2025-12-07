@@ -135,12 +135,13 @@ ENTRYPOINT ["/usr/local/bin/school_tg_tt_bot"]
   - More API calls
 
 #### Webhook Setup
-- **Endpoint**: `/webhook` (HTTPS required)
-- **Port**: 8443 (configurable)
+- **Endpoint**: `/webhook` (HTTPS required, configurable via `telegram.webhook.path`)
+- **Port**: 8443 (configurable via `telegram.webhook.port`)
 - **SSL/TLS**: Required (use Let's Encrypt or similar)
-- **Webhook URL**: `https://<domain>:8443/webhook`
-- **Secret Token**: Use secret token for webhook verification
-- **Certificate Management**: Auto-renewal with certbot
+- **Webhook URL**: `https://<domain><path>` (e.g., `https://example.com/webhook`)
+- **Secret Token**: Use secret token for webhook verification (via `WEBHOOK_SECRET_TOKEN` env var or config)
+- **Certificate Management**: Auto-renewal with certbot or Traefik
+- **Path Validation**: Server validates request path matches configured path (returns 404 for wrong paths)
 
 #### Fallback Strategy
 - If webhook fails to set: Fall back to polling
@@ -149,14 +150,21 @@ ENTRYPOINT ["/usr/local/bin/school_tg_tt_bot"]
 
 ### Process Management
 
-#### Decision: Docker Compose (Primary), systemd (Alternative)
-- **Docker Compose** (Recommended):
-  - Container orchestration
+#### Decision: Docker Swarm (Primary), Docker Compose (Development), systemd (Alternative)
+- **Docker Swarm** (Production - Recommended):
+  - Multi-node orchestration
+  - Service scaling and load balancing
+  - Rolling updates and rollbacks
+  - Secret management
+  - Health checks and restart policies
+  - Routing mesh for webhook distribution
+  - Same deployment mechanism for dev and prod
+
+- **Docker Compose** (Development):
+  - Single-node local development
   - Easy service dependencies
-  - Resource limits
-  - Health checks
-  - Restart policies
-  - Log management
+  - Volume mounts for hot reload
+  - See `docker-compose.yml` for configuration
 
 - **systemd** (Alternative for bare metal):
   - Native Linux service management
@@ -164,7 +172,34 @@ ENTRYPOINT ["/usr/local/bin/school_tg_tt_bot"]
   - Service file configuration
   - Auto-restart on failure
 
-#### Docker Compose Configuration
+#### Docker Swarm Configuration
+
+**Development (single-node):**
+- Stack file: `docker-stack.dev.yml`
+- Deployment script: `scripts/deploy-dev.sh`
+- Single bot instance with `WEBHOOK_REGISTRAR=true`
+- Local PostgreSQL service
+- Overlay network for service communication
+
+**Production (multi-node):**
+- Stack file: `docker-stack.prod.yml`
+- Deployment script: `scripts/deploy-prod.sh`
+- Multiple bot replicas (scalable)
+- Only one instance registers webhook (`WEBHOOK_REGISTRAR=true`)
+- PostgreSQL with placement constraints
+- Traefik reverse proxy for HTTPS termination
+- Docker secrets for sensitive data
+- Rolling updates and rollbacks configured
+
+#### Multi-Instance Webhook Handling
+
+In Docker Swarm with multiple bot instances:
+- **Registrar Instance**: One instance with `WEBHOOK_REGISTRAR=true` registers webhook with Telegram
+- **Worker Instances**: Other instances start webhook server but don't register
+- **Request Distribution**: Swarm routing mesh distributes incoming webhook requests to available instances
+- **Placement**: Use node labels or placement constraints to ensure registrar runs on specific node
+
+#### Docker Compose Configuration (Legacy)
 ```yaml
 version: '3.8'
 services:
@@ -281,30 +316,49 @@ services:
 
 ### Production Deployment
 
-#### Deployment Process
+#### Deployment Process (Docker Swarm)
+
 1. **Pre-Deployment**:
    - Run full CI/CD pipeline
    - Verify all tests pass
    - Review changes
+   - Build and push Docker image to registry
 
 2. **Deployment**:
    - Tag release in Git
-   - CI/CD builds and pushes image
-   - Update Docker Compose on VPS
-   - Pull new image
-   - Run database migrations (if any)
-   - Restart services
+   - On Swarm manager node:
+     - Create/update Docker secrets if needed
+     - Set environment variables (`WEBHOOK_DOMAIN`, etc.)
+     - Run deployment script: `./scripts/deploy-prod.sh`
+     - Or manually: `docker stack deploy -c docker-stack.prod.yml school-tg-bot`
+   - Swarm handles:
+     - Pulling new image
+     - Rolling update (one instance at a time)
+     - Health checks
+     - Rollback on failure
 
 3. **Post-Deployment**:
-   - Verify health checks pass
+   - Verify health checks pass: `docker stack services school-tg-bot`
+   - Check webhook registration in bot logs
    - Monitor error rates
    - Verify functionality
-   - Rollback if issues detected
+   - Rollback if issues detected: `docker stack rollback school-tg-bot`
+
+#### Deployment Scripts
+- **Development**: `scripts/deploy-dev.sh` - Single-node Swarm deployment
+- **Production**: `scripts/deploy-prod.sh` - Multi-node Swarm deployment
+- Scripts handle:
+  - Swarm initialization check
+  - Secret creation/verification
+  - Environment variable validation
+  - Stack deployment
+  - Status reporting
 
 #### Deployment Automation
-- **Manual Deployment**: Operator triggers deployment
+- **Manual Deployment**: Operator triggers deployment via script
 - **Automated Deployment**: Auto-deploy on merge to main (optional)
-- **Blue-Green Deployment**: Not needed for this scale (can add later)
+- **Rolling Updates**: Docker Swarm handles zero-downtime updates automatically
+- **Blue-Green Deployment**: Not needed for this scale (Swarm rolling updates suffice)
 
 ### Resource Management
 
@@ -315,9 +369,13 @@ services:
 - **Network**: Standard
 
 #### Scaling Strategy
-- **Horizontal Scaling**: Can run multiple instances (with proper idempotency)
-- **Vertical Scaling**: Increase resources if needed
-- **Auto-Scaling**: Not needed initially (can add later)
+- **Horizontal Scaling**: 
+  - Scale bot replicas: `docker service scale school-tg-bot_bot=N`
+  - Swarm distributes instances across nodes
+  - Only one instance registers webhook (`WEBHOOK_REGISTRAR=true`)
+  - All instances receive webhook requests via routing mesh
+- **Vertical Scaling**: Increase resources in stack file or via `docker service update`
+- **Auto-Scaling**: Not needed initially (can add later with Swarm autoscaler)
 
 ### Monitoring Deployment
 

@@ -27,7 +27,7 @@ services:
   bot:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     container_name: school-tg-bot-dev
     environment:
       - ENVIRONMENT=development

@@ -41,3 +41,6 @@ Thumbs.db
 .cursor/
 CMakeUserPresets.json
 PROJECT_STRUCTURE.md
+
+secrets
+__pycache__

@@ -1,0 +1,107 @@
+# Docker Swarm stack for development (single-node)
+# Usage: docker stack deploy -c docker-stack.dev.yml school-tg-bot
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: school_tg_bot_dev
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: dev_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bot-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+  bot:
+    image: school-tg-tt-bot:dev
+    # Note: Build the image first with: docker build -t school-tg-tt-bot:dev -f Dockerfile .
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://dev_user:dev_password@postgres:5432/school_tg_bot_dev
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=school_tg_bot_dev
+      - POSTGRES_USER=dev_user
+      - POSTGRES_PASSWORD=dev_password
+      - CONFIG_FILE=/app/config/config.dev.json
+      - WEBHOOK_DOMAIN=${WEBHOOK_DOMAIN:-}
+      - WEBHOOK_URL=${WEBHOOK_URL:-}
+      - WEBHOOK_SECRET_TOKEN=${WEBHOOK_SECRET_TOKEN:-}
+      - WEBHOOK_REGISTRAR=true
+      # Environment variables must be exported before deployment
+      # The deployment script loads them from .env file
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - SCHOOL21_API_USERNAME=${SCHOOL21_API_USERNAME:-}
+      - SCHOOL21_API_PASSWORD=${SCHOOL21_API_PASSWORD:-}
+    secrets:
+      - telegram_bot_token
+      - school21_api_username
+      - school21_api_password
+    networks:
+      - bot-network
+    ports:
+      - "8443:8443"  # Webhook port (for local testing with ngrok/tunnel)
+    depends_on:
+      - postgres
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Reverse proxy for HTTPS termination (optional for dev)
+  # For local dev, you can use ngrok or similar tunnel service
+  # Uncomment if you want to run nginx locally:
+  # nginx:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.dev.conf:/etc/nginx/nginx.conf:ro
+  #     - ./ssl:/etc/nginx/ssl:ro
+  #   networks:
+  #     - bot-network
+  #   deploy:
+  #     replicas: 1
+
+volumes:
+  postgres_data:
+
+networks:
+  bot-network:
+    driver: overlay
+    attachable: true
+
+secrets:
+  telegram_bot_token:
+    external: false
+    file: ./secrets/telegram_bot_token.txt
+  school21_api_username:
+    external: false
+    file: ./secrets/school21_api_username.txt
+  school21_api_password:
+    external: false
+    file: ./secrets/school21_api_password.txt
+

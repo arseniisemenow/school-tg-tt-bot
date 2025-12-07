@@ -93,6 +93,81 @@ flyway -url=jdbc:postgresql://localhost:5432/school_tg_bot \
 ./build/school_tg_tt_bot
 ```
 
+## Deployment
+
+The bot supports two deployment modes:
+
+### Webhook Mode (Production)
+
+The bot uses webhooks to receive updates from Telegram. This is the recommended mode for production deployments.
+
+**Requirements:**
+- HTTPS endpoint (Telegram requirement)
+- Public domain or tunnel (ngrok, cloudflared, etc.)
+- Secret token for webhook validation (optional but recommended)
+
+**Docker Swarm Deployment:**
+
+1. **Development (single-node):**
+   ```bash
+   # Initialize Swarm (if not already initialized)
+   docker swarm init
+   
+   # Set environment variables
+   export WEBHOOK_DOMAIN=your-domain.com  # or use WEBHOOK_URL
+   export WEBHOOK_SECRET_TOKEN=your-secret-token
+   
+   # Deploy stack
+   ./scripts/deploy-dev.sh
+   ```
+
+2. **Production (multi-node):**
+   ```bash
+   # On manager node: Initialize Swarm
+   docker swarm init
+   
+   # On worker nodes: Join Swarm
+   docker swarm join --token <token> <manager-ip>
+   
+   # Create Docker secrets
+   echo "your-token" | docker secret create telegram_bot_token -
+   echo "your-secret" | docker secret create webhook_secret_token -
+   # ... create other secrets
+   
+   # Set environment variables
+   export WEBHOOK_DOMAIN=your-domain.com
+   
+   # Deploy stack
+   ./scripts/deploy-prod.sh
+   ```
+
+**Webhook Configuration:**
+- Set `telegram.webhook.enabled: true` in config file
+- Set `telegram.webhook.port` (default: 8443)
+- Set `telegram.webhook.path` (default: "/webhook")
+- Provide `WEBHOOK_DOMAIN` or `WEBHOOK_URL` environment variable
+- Provide `WEBHOOK_SECRET_TOKEN` for request validation
+
+**Multi-Instance Setup:**
+- Only one instance should register webhook (`WEBHOOK_REGISTRAR=true`)
+- All instances can receive webhook requests via Swarm routing mesh
+- Use placement constraints or node labels to designate registrar instance
+
+See `docker-stack.dev.yml` and `docker-stack.prod.yml` for stack configurations.
+
+### Polling Mode (Development/Fallback)
+
+For local development or as a fallback, the bot can use polling:
+
+```json
+{
+  "telegram": {
+    "webhook": { "enabled": false },
+    "polling": { "enabled": true }
+  }
+}
+```
+
 ## Development
 
 ### Current Status
@@ -105,6 +180,7 @@ The project structure is initialized with:
 - ✅ Observability (logging)
 - ✅ ELO calculator
 - ✅ Database schema migrations
+- ✅ Webhook support with Docker Swarm deployment
 - ⚠️ Command handlers need full implementation
 - ⚠️ Repositories need implementation
 - ⚠️ Full School21 integration needs completion
@@ -117,7 +193,6 @@ The project structure is initialized with:
 3. Complete School21 API integration
 4. Add OpenTelemetry metrics and tracing
 5. Add tests
-6. Add webhook support
 
 ## Configuration
 

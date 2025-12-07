@@ -72,7 +72,8 @@ class Bot : public BotBase<Bot>, public ProductionBotApi {
   // webhook_url: Full URL that Telegram will use to send updates
   // port: Local port to listen on
   // secret_token: Optional secret token for validating webhook requests
-  void startWebhook(const std::string& webhook_url, int port, const std::string& secret_token = "");
+  // register_with_telegram: If true, register webhook with Telegram API. If false, only start server.
+  void startWebhook(const std::string& webhook_url, int port, const std::string& secret_token = "", bool register_with_telegram = true);
   
   // Stop bot (both polling and webhook modes)
   void stop();

@@ -12,7 +12,8 @@
     "webhook": {
       "enabled": true,
       "port": 8443,
-      "path": "/webhook"
+      "path": "/webhook",
+      "secret_token": ""
     },
     "polling": {
       "enabled": false,

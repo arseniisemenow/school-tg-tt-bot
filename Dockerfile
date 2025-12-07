@@ -1,69 +1,48 @@
-# Production Dockerfile
-# Based on ADR-008: Deployment and CI/CD Strategy
-# Multi-stage build for optimized production image
-
-# Stage 1: Build
+# Build stage
 FROM ubuntu:22.04 AS builder
 
 WORKDIR /build
 
-# Install build tools and dependencies
+# Install build tools and dependencies via apt-get
 RUN apt-get update && \
     apt-get install -y \
     build-essential \
-    gcc-12 \
-    g++-12 \
     cmake \
-    ninja-build \
     git \
-    python3 \
-    python3-pip \
+    pkg-config \
+    libpqxx-dev \
+    libcurl4-openssl-dev \
+    nlohmann-json3-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
-
-# Set GCC 12 as default
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100 && \
-    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
-
-# Install Conan 2.x
-RUN pip3 install --no-cache-dir conan==2.*
-
-# Copy Conan configuration
-COPY conanfile.txt ./
-
-# Install Conan dependencies
-# Set C++20 standard during install
-RUN conan profile detect --force && \
-    conan install . --output-folder=build --build=missing -s compiler.cppstd=20
 
 # Copy source code
 COPY . .
 
 # Build the project
-RUN cmake -S . -B build \
-    -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake \
-    -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build build --target school_tg_tt_bot
+RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build --parallel $(nproc)
 
-# Stage 2: Runtime
+# Runtime stage
 FROM ubuntu:22.04
 
 # Install runtime dependencies
 RUN apt-get update && \
     apt-get install -y \
     libpq5 \
+    libpqxx-6.4 \
     libcurl4 \
     ca-certificates \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
+# Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
-    mkdir -p /app /app/config /app/migrations && \
+    mkdir -p /app/config /app/migrations && \
     chown -R appuser:appuser /app
 
-# Copy built binary
+# Copy binary and config files from builder
 COPY --from=builder --chown=appuser:appuser /build/build/school_tg_tt_bot /usr/local/bin/school_tg_tt_bot
-
-# Copy configuration files
 COPY --chown=appuser:appuser config/ /app/config/
 COPY --chown=appuser:appuser migrations/ /app/migrations/
 
@@ -72,10 +51,9 @@ USER appuser
 
 WORKDIR /app
 
-# Health check
+# Health check - check if the bot process is running
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD pg_isready -h ${POSTGRES_HOST:-localhost} -p ${POSTGRES_PORT:-5432} || exit 1
+    CMD pgrep -f school_tg_tt_bot > /dev/null || exit 1
 
-# Entry point
+# Run the application
 ENTRYPOINT ["/usr/local/bin/school_tg_tt_bot"]
-

@@ -156,13 +156,39 @@ int main(int argc, char* argv[]) {
     if (webhook_enabled) {
       int port = config.getInt("telegram.webhook.port", 8443);
       std::string path = config.getString("telegram.webhook.path", "/webhook");
-      // TODO: Get webhook URL from environment or config
+      
+      // Construct webhook URL from WEBHOOK_URL or WEBHOOK_DOMAIN + path
       std::string webhook_url = getEnvVar("WEBHOOK_URL");
       if (webhook_url.empty()) {
-        throw std::runtime_error("WEBHOOK_URL not set but webhook enabled");
+        std::string domain = getEnvVar("WEBHOOK_DOMAIN");
+        if (domain.empty()) {
+          throw std::runtime_error("Either WEBHOOK_URL or WEBHOOK_DOMAIN must be set when webhook is enabled");
+        }
+        // Ensure domain doesn't have trailing slash and path starts with /
+        if (domain.back() == '/') {
+          domain.pop_back();
+        }
+        if (path.front() != '/') {
+          path = "/" + path;
+        }
+        webhook_url = "https://" + domain + path;
       }
-      telegram_bot.startWebhook(webhook_url, port);
-      logger->info("Bot started in webhook mode on port " + std::to_string(port));
+      
+      // Get secret token from environment or config
+      std::string secret_token = getEnvVar("WEBHOOK_SECRET_TOKEN");
+      if (secret_token.empty()) {
+        secret_token = config.getString("telegram.webhook.secret_token", "");
+      }
+      
+      // Check if this instance should register webhook with Telegram
+      // Only one instance should register (WEBHOOK_REGISTRAR=true)
+      // Other instances can receive updates but don't register
+      std::string registrar_str = getEnvVar("WEBHOOK_REGISTRAR", "true");
+      bool register_with_telegram = (registrar_str == "true" || registrar_str == "1");
+      
+      telegram_bot.startWebhook(webhook_url, port, secret_token, register_with_telegram);
+      logger->info("Bot started in webhook mode on port " + std::to_string(port) + 
+                   (register_with_telegram ? " (webhook registrar)" : " (webhook worker)"));
     } else if (polling_enabled) {
       telegram_bot.startPolling();
       logger->info("Bot started in polling mode");

@@ -10,12 +10,13 @@
   },
   "telegram": {
     "webhook": {
-      "enabled": false,
+      "enabled": true,
       "port": 8443,
-      "path": "/webhook"
+      "path": "/webhook",
+      "secret_token": ""
     },
     "polling": {
-      "enabled": true,
+      "enabled": false,
       "timeout_seconds": 30
     },
     "rate_limit": {

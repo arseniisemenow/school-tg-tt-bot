@@ -1,0 +1,190 @@
+# Docker Swarm stack for production (multi-node)
+# Usage: docker stack deploy -c docker-stack.prod.yml school-tg-bot
+#
+# Prerequisites:
+# 1. Initialize Swarm: docker swarm init (on manager node)
+# 2. Join worker nodes: docker swarm join --token <token> <manager-ip>
+# 3. Create secrets: echo "value" | docker secret create secret_name -
+# 4. Set WEBHOOK_DOMAIN environment variable (public domain with HTTPS)
+# 5. Configure reverse proxy with SSL certificate
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: school_tg_bot
+      POSTGRES_USER_FILE: /run/secrets/postgres_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_user
+      - postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$(cat /run/secrets/postgres_user)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bot-network
+    deploy:
+      replicas: 1
+      # PostgreSQL should run on a single node (or dedicated node)
+      placement:
+        constraints:
+          - node.role == manager
+        preferences:
+          - spread: node.labels.postgres
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  bot:
+    image: school-tg-tt-bot:latest
+    # For production, use a pre-built image from registry:
+    # image: ghcr.io/<org>/school-tg-tt-bot:latest
+    environment:
+      - ENVIRONMENT=production
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - CONFIG_FILE=/app/config/config.prod.json
+      - WEBHOOK_DOMAIN=${WEBHOOK_DOMAIN}
+      - WEBHOOK_URL=${WEBHOOK_URL:-}
+      # Only one instance should register webhook (use placement constraints or init script)
+      # For now, we'll use a label-based approach - set WEBHOOK_REGISTRAR=true on one node
+      - WEBHOOK_REGISTRAR=${WEBHOOK_REGISTRAR:-false}
+      # Note: Secrets are mounted to /run/secrets/ but the app reads from env vars
+      # You may need to create an entrypoint script that reads secrets and sets env vars
+      # For now, secrets are listed but you'll need to handle them in your deployment script
+    secrets:
+      - telegram_bot_token
+      - school21_api_username
+      - school21_api_password
+      - postgres_db
+      - postgres_user
+      - postgres_password
+      - webhook_secret_token
+    networks:
+      - bot-network
+    # Webhook port exposed via Swarm routing mesh
+    # All nodes can receive traffic on this port
+    ports:
+      - target: 8443
+        published: 8443
+        protocol: tcp
+        mode: ingress
+    depends_on:
+      - postgres
+    deploy:
+      # Scale bot instances across nodes
+      replicas: 3
+      # Use placement constraints to ensure registrar runs on specific node
+      # Option 1: Use node labels (recommended)
+      # Label a node: docker node update --label-add webhook.registrar=true <node-id>
+      # Then use: placement.constraints: [node.labels.webhook.registrar == true]
+      # Option 2: Use placement preferences to spread instances
+      placement:
+        constraints:
+          - node.role == worker  # Run on worker nodes
+        preferences:
+          - spread: node.labels.zone
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        failure_action: pause
+        monitor: 60s
+        order: start-first
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.bot.rule=Host(`${WEBHOOK_DOMAIN}`)"
+        - "traefik.http.routers.bot.entrypoints=websecure"
+        - "traefik.http.routers.bot.tls.certresolver=letsencrypt"
+        - "traefik.http.services.bot.loadbalancer.server.port=8443"
+
+  # Reverse proxy for HTTPS termination (Traefik example)
+  # You can use nginx, traefik, or another reverse proxy
+  # This is a basic Traefik setup - adjust as needed
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker.swarmmode=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - bot-network
+    deploy:
+      mode: global  # Run on all nodes, or use replicas
+      # mode: replicated
+      # replicas: 2
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+volumes:
+  postgres_data:
+  traefik_letsencrypt:
+
+networks:
+  bot-network:
+    driver: overlay
+    attachable: true
+
+secrets:
+  telegram_bot_token:
+    external: true
+  school21_api_username:
+    external: true
+  school21_api_password:
+    external: true
+  postgres_db:
+    external: true
+  postgres_user:
+    external: true
+  postgres_password:
+    external: true
+  webhook_secret_token:
+    external: true
+
