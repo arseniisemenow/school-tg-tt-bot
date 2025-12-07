@@ -1,8 +1,12 @@
 #include "bot/webhook_server.h"
+#include "observability/logger.h"
 #include <sstream>
 #include <algorithm>
 #include <poll.h>
 #include <fcntl.h>
+#include <arpa/inet.h>
+#include <cstring>
+#include <cerrno>
 
 namespace bot {
 
@@ -130,7 +134,17 @@ void WebhookServer::serverLoop() {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         continue;  // No connection available
       }
+      auto logger = observability::Logger::getInstance();
+      logger->warn("Failed to accept connection: " + std::string(strerror(errno)));
       continue;  // Other error, continue serving
+    }
+    
+    // Log incoming connection
+    char client_ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(client_addr.sin_addr), client_ip, INET_ADDRSTRLEN);
+    {
+      auto logger = observability::Logger::getInstance();
+      logger->info("Incoming webhook connection from " + std::string(client_ip) + ":" + std::to_string(ntohs(client_addr.sin_port)));
     }
     
     // Set socket timeout for reads/writes
@@ -148,15 +162,23 @@ void WebhookServer::serverLoop() {
 }
 
 void WebhookServer::handleClient(int client_socket) {
+  auto logger = observability::Logger::getInstance();
+  logger->info("Processing webhook request");
+  
   HttpRequest request = parseRequest(client_socket);
   
   if (!request.valid) {
+    logger->warn("Invalid webhook request received");
     sendResponse(client_socket, 400, "Bad Request");
     return;
   }
   
+  logger->info("Webhook request parsed: method=" + request.method + ", path=" + request.path + 
+               ", content_type=" + request.content_type + ", body_size=" + std::to_string(request.body.size()));
+  
   // Verify method is POST
   if (request.method != "POST") {
+    logger->warn("Webhook request with invalid method: " + request.method);
     sendResponse(client_socket, 405, "Method Not Allowed");
     return;
   }
@@ -186,12 +208,14 @@ void WebhookServer::handleClient(int client_socket) {
   }
   
   if (request_path != normalized_expected) {
+    logger->warn("Webhook request path mismatch: expected=" + normalized_expected + ", got=" + request_path);
     sendResponse(client_socket, 404, "Not Found");
     return;
   }
   
   // Verify content type is JSON
   if (request.content_type.find("application/json") == std::string::npos) {
+    logger->warn("Webhook request with invalid content type: " + request.content_type);
     sendResponse(client_socket, 415, "Unsupported Media Type");
     return;
   }
@@ -199,10 +223,14 @@ void WebhookServer::handleClient(int client_socket) {
   // Verify secret token if configured
   if (!config_.secret_token.empty()) {
     if (request.secret_token != config_.secret_token) {
+      logger->warn("Webhook request with invalid secret token");
       sendResponse(client_socket, 403, "Forbidden");
       return;
     }
+    logger->debug("Webhook secret token validated");
   }
+  
+  logger->info("Processing Telegram update, body_size=" + std::to_string(request.body.size()));
   
   // Process the update
   UpdateCallback callback;
@@ -212,41 +240,55 @@ void WebhookServer::handleClient(int client_socket) {
   }
   
   if (callback) {
+    logger->info("Calling update callback");
     bool success = callback(request.body);
     if (success) {
+      logger->info("Update processed successfully");
       sendResponse(client_socket, 200, "OK");
     } else {
+      logger->warn("Update processing returned false");
       // Still return 200 to Telegram, but log failure internally
       sendResponse(client_socket, 200, "OK");
     }
   } else {
+    logger->error("No update callback registered!");
     sendResponse(client_socket, 200, "OK");
   }
 }
 
 WebhookServer::HttpRequest WebhookServer::parseRequest(int client_socket) {
   HttpRequest request;
+  auto logger = observability::Logger::getInstance();
   
   // Read headers
   std::string headers = readHeaders(client_socket);
   if (headers.empty()) {
+    logger->warn("Failed to read headers from webhook request");
     return request;
   }
+  
+  logger->debug("Headers received, size=" + std::to_string(headers.size()) + ", preview=" + headers.substr(0, 200));
   
   // Parse request line
   size_t first_line_end = headers.find("\r\n");
   if (first_line_end == std::string::npos) {
+    logger->warn("Request line separator not found in headers");
     return request;
   }
   
   std::string request_line = headers.substr(0, first_line_end);
+  logger->debug("Request line: " + request_line);
+  
   std::istringstream iss(request_line);
   std::string version;
   iss >> request.method >> request.path >> version;
   
   if (request.method.empty() || request.path.empty()) {
+    logger->warn("Failed to parse request line: method=" + request.method + ", path=" + request.path);
     return request;
   }
+  
+  logger->debug("Parsed request: method=" + request.method + ", path=" + request.path + ", version=" + version);
   
   // Parse headers
   size_t content_length = 0;

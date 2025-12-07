@@ -9,6 +9,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 STACK_NAME="school-tg-bot"
 STACK_FILE="$PROJECT_ROOT/docker-stack.dev.yml"
+DEPLOY_IMAGE_TAG="${DEPLOY_IMAGE_TAG:-image-deploy:1.0.0}"
 
 echo "=== Deploying School TG Bot to Docker Swarm (Dev) ==="
 echo ""
@@ -178,12 +179,28 @@ fi
 
 echo ""
 
-# Build the image
-echo "Building bot image..."
-cd "$PROJECT_ROOT"
-docker build -t school-tg-tt-bot:dev -f Dockerfile .
-echo "✓ Image built"
+# Check if build artifacts exist
+BUILD_BINARY="$PROJECT_ROOT/build/school_tg_tt_bot"
+if [ ! -f "$BUILD_BINARY" ]; then
+    echo "ERROR: Build artifacts not found at $BUILD_BINARY"
+    echo ""
+    echo "Please build the project first (e.g., inside bot container):"
+    echo "  docker compose exec bot ./scripts/build.sh"
+    echo ""
+    echo "Or build via builder image:"
+    echo "  ./scripts/build-docker.sh"
+    echo ""
+    echo "Ensure the binary exists at:"
+    echo "  $BUILD_BINARY"
+    exit 1
+fi
 
+echo "✓ Build artifacts found: $BUILD_BINARY"
+echo ""
+
+# Package runtime image (no compilation)
+echo "Packaging runtime image: $DEPLOY_IMAGE_TAG"
+"$PROJECT_ROOT/scripts/package-runtime.sh" "$DEPLOY_IMAGE_TAG"
 echo ""
 
 # Load environment variables from .env file if it exists

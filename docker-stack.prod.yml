@@ -52,6 +52,8 @@ services:
 
   bot:
     image: school-tg-tt-bot:latest
+    # Build artifacts via ./scripts/build-docker.sh, then package/push the runtime
+    # image with ./scripts/package-runtime.sh (tag must match this reference)
     # For production, use a pre-built image from registry:
     # image: ghcr.io/<org>/school-tg-tt-bot:latest
     environment:

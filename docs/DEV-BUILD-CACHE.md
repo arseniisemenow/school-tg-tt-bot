@@ -30,10 +30,16 @@ The development setup uses Docker volumes to cache the build directory between d
 ### Build with Cache (Default)
 
 ```bash
-# Build using Dockerfile.dev (with cache support)
-docker build -t school-tg-tt-bot:dev -f Dockerfile.dev .
+# (If Dockerfiles changed) rebuild images
+./scripts/compile-images.sh
 
-# Deploy (build directory is cached automatically)
+# Build artifacts using the builder image (bind-mounts ./build for reuse)
+./scripts/build-docker.sh
+
+# Package runtime image without recompiling
+./scripts/package-runtime.sh
+
+# Deploy
 ./scripts/deploy-dev.sh
 ```
 
@@ -133,8 +139,6 @@ docker volume inspect school-tg-bot_build_cache
 
 ## Production vs Development
 
-- **Production** (`Dockerfile`): Builds everything in image, no cache
-- **Development** (`Dockerfile.dev`): Uses volumes for build cache
-
-For production deployments, use the regular `Dockerfile` which creates a minimal runtime image.
+- **Builder image** (`Dockerfile.dev`): Contains toolchain; builds to host-mounted `./build`
+- **Runtime image** (`Dockerfile.deploy`): Copies prebuilt artifacts; no compilation during packaging
 

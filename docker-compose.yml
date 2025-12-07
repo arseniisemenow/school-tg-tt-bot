@@ -24,10 +24,21 @@ services:
     networks:
       - bot-network
 
+  builder:
+    image: image-build:1.0.0
+    container_name: school-tg-bot-builder
+    working_dir: /src
+    command: sleep infinity
+    volumes:
+      - .:/src
+      - ./build:/src/build
+    networks:
+      - bot-network
+    profiles:
+      - build
+
   bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: image-deploy:1.0.0
     container_name: school-tg-bot-dev
     environment:
       - ENVIRONMENT=development
@@ -41,19 +52,12 @@ services:
       - SCHOOL21_API_USERNAME=${SCHOOL21_API_USERNAME:-}
       - SCHOOL21_API_PASSWORD=${SCHOOL21_API_PASSWORD:-}
       - CONFIG_FILE=/app/config/config.dev.json
-    volumes:
-      # Mount source code for development (hot reload)
-      - .:/app
-      # Preserve build directory
-      - bot_build:/app/build
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - bot-network
-    stdin_open: true
-    tty: true
-    command: /bin/bash
+    restart: unless-stopped
 
   # Optional: OpenTelemetry Collector for observability
   otel-collector:
@@ -72,7 +76,6 @@ services:
 
 volumes:
   postgres_data:
-  bot_build:
 
 networks:
   bot-network:

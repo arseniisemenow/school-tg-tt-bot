@@ -44,3 +44,6 @@ PROJECT_STRUCTURE.md
 
 secrets
 __pycache__
+_deps
+CMakeFiles
+.env*

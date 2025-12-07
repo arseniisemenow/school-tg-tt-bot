@@ -186,15 +186,25 @@ std::string Bot::extractCommandName(const tgbotxx::Ptr<tgbotxx::Message>& messag
 }
 
 void Bot::startPolling() {
+  if (!logger_) logger_ = observability::Logger::getInstance().get();
+  
   if (running_) {
+    logger_->warn("Bot is already running, skipping startPolling");
     return;
   }
   
+  logger_->info("Starting polling mode...");
   running_ = true;
+  mode_ = BotMode::Polling;
+  
   try {
-    start();  // tgbotxx::Bot::start() starts polling
+    logger_->info("Calling tgbotxx::Bot::start() to begin polling");
+    start();  // tgbotxx::Bot::start() starts polling (this blocks)
+    logger_->info("tgbotxx::Bot::start() returned (polling started)");
   } catch (const std::exception& e) {
     running_ = false;
+    mode_ = BotMode::None;
+    logger_->error("Failed to start polling: " + std::string(e.what()));
     throw std::runtime_error("Failed to start polling: " + 
                              std::string(e.what()));
   }

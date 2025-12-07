@@ -19,12 +19,15 @@ fi
 
 # Remove old images
 echo "Removing old images..."
-docker rmi school-tg-tt-bot:dev 2>/dev/null || echo "  Image not found (already removed)"
+docker rmi image-deploy:1.0.0 2>/dev/null || echo "  Deploy image not found (already removed)"
+docker rmi image-build:1.0.0 2>/dev/null || echo "  Builder image not found (already removed)"
 
 echo ""
 echo "✓ Cleanup complete"
 echo ""
 echo "Next steps:"
-echo "  1. Rebuild image: docker build -t school-tg-tt-bot:dev -f Dockerfile ."
-echo "  2. Redeploy: ./scripts/deploy-dev.sh"
+echo "  1. Rebuild images: ./scripts/build-images.sh"
+echo "  2. Rebuild artifacts: ./scripts/build-docker.sh"
+echo "  3. Package runtime image: ./scripts/package-runtime.sh"
+echo "  4. Redeploy: ./scripts/deploy-dev.sh"
 

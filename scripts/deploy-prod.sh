@@ -9,6 +9,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 STACK_NAME="school-tg-bot"
 STACK_FILE="$PROJECT_ROOT/docker-stack.prod.yml"
+RUNTIME_IMAGE="${RUNTIME_IMAGE:-school-tg-tt-bot:latest}"
 
 echo "=== Deploying School TG Bot to Docker Swarm (Production) ==="
 echo ""
@@ -101,6 +102,19 @@ if [ ${#MISSING_SECRETS[@]} -ne 0 ]; then
 else
     echo "✓ All required secrets exist"
 fi
+
+# Ensure build artifacts exist and package runtime image
+BUILD_BINARY="$PROJECT_ROOT/build/school_tg_tt_bot"
+if [ ! -f "$BUILD_BINARY" ]; then
+    echo "ERROR: Build artifacts not found at $BUILD_BINARY"
+    echo "Please build first (e.g. ./scripts/build-docker.sh) before packaging."
+    exit 1
+fi
+
+echo ""
+echo "Packaging runtime image for production: $RUNTIME_IMAGE"
+"$PROJECT_ROOT/scripts/package-runtime.sh" "$RUNTIME_IMAGE"
+echo ""
 
 # Check webhook configuration
 echo ""

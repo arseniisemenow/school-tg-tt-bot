@@ -1,6 +1,9 @@
 # Build artifacts
 cmake-build-*/
 build/
+# Keep release binaries for packaging runtime image
+!build/school_tg_tt_bot
+!build/school_tg_tt_bot_tests
 *.o
 *.a
 *.so

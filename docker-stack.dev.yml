@@ -29,8 +29,12 @@ services:
         condition: on-failure
 
   bot:
-    image: school-tg-tt-bot:dev
-    # Note: Build the image first with: docker build -t school-tg-tt-bot:dev -f Dockerfile .
+    image: image-deploy:1.0.0
+    # Note: Build and deploy workflow:
+    #   1. Build artifacts: ./scripts/build-docker.sh (outputs to ./build/)
+    #   2. Package runtime image: ./scripts/package-runtime.sh image-deploy:1.0.0
+    #   3. Deploy: ./scripts/deploy-dev.sh
+    # Or manually: docker build -t image-deploy:1.0.0 -f Dockerfile.deploy .
     environment:
       - ENVIRONMENT=development
       - DATABASE_URL=postgresql://dev_user:dev_password@postgres:5432/school_tg_bot_dev

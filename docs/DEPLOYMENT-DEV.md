@@ -18,14 +18,20 @@ This guide explains how to run the bot in Docker Swarm mode for local developmen
 #    SCHOOL21_API_USERNAME=your_username
 #    SCHOOL21_API_PASSWORD=your_password
 
-# 2. Build the Docker image first
-docker build -t school-tg-tt-bot:dev -f Dockerfile .
+# 2. Compile images (only when Dockerfiles change)
+./scripts/compile-images.sh
 
-# 3. Set webhook configuration (optional for webhook mode)
+# 3. Build artifacts (uses prebuilt builder image, outputs to ./build)
+./scripts/build-docker.sh
+
+# 4. Package runtime image (copies ./build into the runtime image, no compile)
+./scripts/package-runtime.sh
+
+# 5. Set webhook configuration (optional for webhook mode)
 export WEBHOOK_DOMAIN=your-ngrok-domain.ngrok.io  # If using ngrok
 export WEBHOOK_SECRET_TOKEN=your-secret-token      # Optional but recommended
 
-# 4. Run the deployment script
+# 6. Run the deployment script
 ./scripts/deploy-dev.sh
 ```
 
@@ -41,20 +47,26 @@ The script will:
 # 1. Initialize Docker Swarm (if not already initialized)
 docker swarm init
 
-# 2. Build the Docker image
-docker build -t school-tg-tt-bot:dev -f Dockerfile .
+# 2. Compile images (only when Dockerfiles change)
+./scripts/compile-images.sh
 
-# 3. Create secrets directory and files
+# 3. Build artifacts (builder container mounts the repo)
+./scripts/build-docker.sh
+
+# 4. Package runtime image from ./build (no rebuild)
+./scripts/package-runtime.sh
+
+# 5. Create secrets directory and files
 mkdir -p secrets
 echo "your-telegram-bot-token" > secrets/telegram_bot_token.txt
 echo "your-username" > secrets/school21_api_username.txt
 echo "your-password" > secrets/school21_api_password.txt
 
-# 4. Set environment variables (optional)
+# 6. Set environment variables (optional)
 export WEBHOOK_DOMAIN=your-domain.com
 export WEBHOOK_SECRET_TOKEN=your-secret-token
 
-# 5. Deploy the stack
+# 7. Deploy the stack
 docker stack deploy -c docker-stack.dev.yml school-tg-bot
 ```
 
@@ -169,9 +181,11 @@ docker service logs school-tg-bot_postgres
 
 ### Image Not Found
 
-Make sure you've built the image:
+Make sure you've compiled images and packaged the runtime image:
 ```bash
-docker build -t school-tg-tt-bot:dev -f Dockerfile .
+./scripts/compile-images.sh        # if Dockerfiles changed
+./scripts/build-docker.sh
+./scripts/package-runtime.sh
 ```
 
 ### Secrets Not Found
@@ -209,18 +223,11 @@ docker exec -it $(docker ps -q -f name=postgres) psql -U dev_user -d school_tg_b
 ## Development Workflow
 
 1. **Make code changes**
-2. **Rebuild the image:**
-   ```bash
-   docker build -t school-tg-tt-bot:dev -f Dockerfile .
-   ```
-3. **Update the stack:**
-   ```bash
-   docker stack deploy -c docker-stack.dev.yml school-tg-bot
-   ```
-4. **Check logs to verify:**
-   ```bash
-   docker service logs -f school-tg-bot_bot
-   ```
+2. **(If Dockerfiles changed) Rebuild images:** `./scripts/compile-images.sh`
+3. **Rebuild artifacts:** `./scripts/build-docker.sh`
+4. **Package runtime image (no compilation):** `./scripts/package-runtime.sh`
+5. **Update the stack:** `docker stack deploy -c docker-stack.dev.yml school-tg-bot`
+6. **Check logs to verify:** `docker service logs -f school-tg-bot_bot`
 
 ## Differences from Docker Compose
 

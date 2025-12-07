@@ -15,7 +15,7 @@ Conan is trying to build `libcurl/8.0.1` from source because:
 
 If you still see this issue:
 1. Clear build cache: `./scripts/clear-build-cache.sh`
-2. Rebuild: `docker build -t school-tg-tt-bot:dev -f Dockerfile.dev .`
+2. Rebuild: `docker build -t image-build:1.0.0 -f Dockerfile.dev .`
 3. Redeploy: `./scripts/deploy-dev.sh`
 
 ## Issue: Permission Denied Errors
@@ -44,7 +44,7 @@ The Dockerfile.dev now includes an entrypoint script that fixes permissions auto
 
 3. **Rebuild and redeploy:**
    ```bash
-   docker build -t school-tg-tt-bot:dev -f Dockerfile.dev .
+   docker build -t image-build:1.0.0 -f Dockerfile.dev .
    ./scripts/deploy-dev.sh
    ```
 
@@ -120,7 +120,7 @@ Build directory volume not mounted or permissions issue.
 # Remove everything and start fresh
 docker stack rm school-tg-bot
 ./scripts/clear-build-cache.sh
-docker build -t school-tg-tt-bot:dev -f Dockerfile.dev .
+docker build -t image-build:1.0.0 -f Dockerfile.dev .
 ./scripts/deploy-dev.sh
 ```
 
@@ -140,7 +140,7 @@ docker service ps school-tg-bot_bot
 ```bash
 # Remove volumes and rebuild
 ./scripts/clear-build-cache.sh
-docker build --no-cache -t school-tg-tt-bot:dev -f Dockerfile.dev .
+docker build --no-cache -t image-build:1.0.0 -f Dockerfile.dev .
 ./scripts/deploy-dev.sh
 ```
 

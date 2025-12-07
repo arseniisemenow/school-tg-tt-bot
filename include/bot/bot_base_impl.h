@@ -269,17 +269,24 @@ template<typename Derived>
 bool BotBase<Derived>::processUpdate(const std::string& json_body) {
   if (!logger_) logger_ = observability::Logger::getInstance().get();
   
+  logger_->info("Received webhook update, body_size=" + std::to_string(json_body.size()));
+  
   try {
     // Parse JSON string to nlohmann::json
     nlohmann::json json = nlohmann::json::parse(json_body);
+    
+    // Extract update_id for logging
+    int32_t update_id = json.value("update_id", 0);
+    logger_->info("Parsed Telegram update, update_id=" + std::to_string(update_id));
     
     // Process the update directly from JSON
     // This avoids needing to link against tgbotxx::Update::fromJson
     processJsonUpdate(json);
     
+    logger_->info("Successfully processed update_id=" + std::to_string(update_id));
     return true;
   } catch (const nlohmann::json::parse_error& e) {
-    logger_->error("Failed to parse webhook JSON: " + std::string(e.what()));
+    logger_->error("Failed to parse webhook JSON: " + std::string(e.what()) + ", body_preview=" + json_body.substr(0, 200));
     return false;
   } catch (const std::exception& e) {
     logger_->error("Error processing webhook update: " + std::string(e.what()));
@@ -470,16 +477,32 @@ void BotBase<Derived>::processJsonUpdate(const nlohmann::json& json) {
   
   try {
     int32_t update_id = json.value("update_id", 0);
+    logger_->info("Processing JSON update, update_id=" + std::to_string(update_id));
     
     // Route update to appropriate handler based on update type
     if (json.contains("message")) {
+      logger_->info("Update contains message, update_id=" + std::to_string(update_id));
       auto message = parseMessageFromJson(json["message"]);
+      
+      int64_t chat_id = message->chat ? message->chat->id : 0;
+      std::string chat_title = message->chat ? message->chat->title : "";
+      std::string from_username = message->from ? message->from->username : "";
+      int64_t from_id = message->from ? message->from->id : 0;
+      
+      logger_->info("Message details: chat_id=" + std::to_string(chat_id) + 
+                    ", chat_title=" + chat_title + 
+                    ", from_id=" + std::to_string(from_id) + 
+                    ", from_username=" + from_username +
+                    ", text_length=" + std::to_string(message->text.size()));
       
       // Check if it's a command (text starts with /)
       if (!message->text.empty() && message->text.front() == '/') {
+        std::string command = extractCommandName(message);
+        logger_->info("Processing command: " + command + ", update_id=" + std::to_string(update_id));
         onCommand(message);
       }
       // Always call onAnyMessage for all messages
+      logger_->info("Calling onAnyMessage handler, update_id=" + std::to_string(update_id));
       onAnyMessage(message);
     }
     else if (json.contains("edited_message")) {
